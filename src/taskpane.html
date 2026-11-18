@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="nb">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PPTimagePoint</title>
+  <link rel="stylesheet" href="taskpane.css">
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <script src="vendor/jszip.min.js"></script>
+  <script src="js/imageops.js"></script>
+  <script src="js/pptx-extract.js"></script>
+  <script src="js/office-bridge.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="assets/icon-32.png" alt="" width="20" height="20">
+      <span>PPTimagePoint</span>
+    </div>
+    <div class="load-row">
+      <button id="btnGet" class="primary" type="button">Hent markert bilde</button>
+      <label class="button" for="fileInput">Åpne fil</label>
+      <input id="fileInput" type="file" accept="image/png,image/jpeg,image/gif,image/bmp,image/webp" hidden>
+    </div>
+  </header>
+
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+
+  <section class="stage-wrap">
+    <div id="empty" class="empty">
+      <p><strong>Marker et bilde i PowerPoint</strong> og trykk «Hent markert bilde».</p>
+      <p class="muted">Du kan også dra et bilde hit eller lime inn med Ctrl+V.</p>
+    </div>
+    <div id="stage" class="stage checker" hidden>
+      <canvas id="view"></canvas>
+      <div id="brushCursor" class="brush-cursor" hidden></div>
+    </div>
+    <div id="toolbar" class="toolbar" hidden>
+      <div class="seg" role="group" aria-label="Verktøy">
+        <button type="button" data-tool="pick" class="on" title="Klikk på bakgrunnen for å fjerne den. Shift+klikk legger til flere farger.">Velg farge</button>
+        <button type="button" data-tool="erase" title="Mal bort det som skal bli gjennomsiktig">Visk ut</button>
+        <button type="button" data-tool="restore" title="Mal tilbake deler av motivet">Gjenopprett</button>
+      </div>
+      <button type="button" id="btnCompare" class="ghost" title="Hold inne for å se originalen">Før</button>
+      <select id="bgSelect" title="Bakgrunn i forhåndsvisningen">
+        <option value="checker">Rutenett</option>
+        <option value="white">Hvit</option>
+        <option value="black">Svart</option>
+        <option value="slide">Grå</option>
+      </select>
+    </div>
+    <div id="info" class="info muted" hidden></div>
+  </section>
+
+  <main id="panels" hidden>
+    <details open id="secKey">
+      <summary>Fjern bakgrunn</summary>
+      <div class="body">
+        <p class="hint">Klikk på bakgrunnsfargen i bildet. <kbd>Shift</kbd>+klikk legger til flere farger (f.eks. ved skygger eller fargeoverganger).</p>
+        <div class="row">
+          <button type="button" id="btnAuto">Finn bakgrunn automatisk</button>
+          <label class="switch"><input type="checkbox" id="keyEnabled"> På</label>
+        </div>
+        <div id="chips" class="chips"></div>
+        <div class="slider" data-key="tolerance" data-min="0" data-max="100" data-step="1" data-def="18" data-label="Toleranse"></div>
+        <div class="slider" data-key="softness" data-min="0" data-max="60" data-step="1" data-def="10" data-label="Myk overgang"></div>
+        <label class="field">Område
+          <select id="keyMode">
+            <option value="connected">Sammenhengende bakgrunn (anbefalt)</option>
+            <option value="global">Fargen overalt i bildet</option>
+          </select>
+        </label>
+        <label class="check" id="edgesWrap"><input type="checkbox" id="fromEdges" checked> Start fra bildekantene</label>
+        <div class="slider" data-key="choke" data-min="-10" data-max="10" data-step="0.5" data-def="1" data-label="Krymp / utvid kant"></div>
+        <div class="slider" data-key="feather" data-min="0" data-max="10" data-step="0.5" data-def="1" data-label="Kantutjevning"></div>
+        <label class="check"><input type="checkbox" id="defringe" checked> Fjern fargesøl i kantene</label>
+        <label class="check"><input type="checkbox" id="trim"> Beskjær tomme kanter</label>
+        <div class="sub">
+          <div class="slider" data-key="brush" data-min="1" data-max="150" data-step="1" data-def="30" data-label="Penselstørrelse"></div>
+          <div class="row">
+            <button type="button" id="btnUndoStroke">Angre strøk</button>
+            <button type="button" id="btnClearStrokes">Fjern alle strøk</button>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details open id="secAdjust">
+      <summary>Farger og lys</summary>
+      <div class="body">
+        <h4>Lys</h4>
+        <div class="slider adj" data-key="exposure" data-min="-2" data-max="2" data-step="0.05" data-def="0" data-label="Eksponering"></div>
+        <div class="slider adj" data-key="brightness" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Lysstyrke"></div>
+        <div class="slider adj" data-key="contrast" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Kontrast"></div>
+        <div class="slider adj" data-key="highlights" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Høylys"></div>
+        <div class="slider adj" data-key="shadows" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Skygger"></div>
+        <h4>Farge</h4>
+        <div class="slider adj" data-key="temperature" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Temperatur" data-track="temp"></div>
+        <div class="slider adj" data-key="tint" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Fargestikk" data-track="tint"></div>
+        <div class="slider adj" data-key="hue" data-min="-180" data-max="180" data-step="1" data-def="0" data-label="Fargetone (hue)" data-track="hue"></div>
+        <div class="slider adj" data-key="saturation" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Metning"></div>
+        <div class="slider adj" data-key="vibrance" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Livfullhet"></div>
+        <h4>Detaljer</h4>
+        <div class="slider adj" data-key="clarity" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Klarhet"></div>
+        <div class="slider adj" data-key="sharpness" data-min="0" data-max="100" data-step="1" data-def="0" data-label="Skarphet"></div>
+        <div class="row">
+          <button type="button" id="btnResetAdjust">Nullstill farger og lys</button>
+        </div>
+        <p class="hint">Dobbeltklikk på en glidebryter for å nullstille den.</p>
+      </div>
+    </details>
+
+    <details id="secSize">
+      <summary>Størrelse og oppløsning</summary>
+      <div class="body">
+        <div class="size-grid">
+          <label class="field">Bredde (px)<input type="number" id="outW" min="1" max="12000"></label>
+          <button type="button" id="lockBtn" class="lock on" title="Lås forholdet mellom bredde og høyde" aria-pressed="true">Låst</button>
+          <label class="field">Høyde (px)<input type="number" id="outH" min="1" max="12000"></label>
+        </div>
+        <div class="row wrap">
+          <button type="button" data-pct="25">25 %</button>
+          <button type="button" data-pct="50">50 %</button>
+          <button type="button" data-pct="100">100 %</button>
+          <button type="button" data-pct="200">200 %</button>
+          <button type="button" id="btnOptimal" title="Riktig oppløsning for størrelsen bildet har på lysbildet (220 ppi). Gjør filen mindre uten synlig tap.">Optimal for lysbildet</button>
+        </div>
+        <p class="hint">Skaleres med Lanczos-filter for skarpe resultater, både ned og opp. Størrelsen på lysbildet beholdes.</p>
+        <label class="field">Filformat
+          <select id="format">
+            <option value="auto">Automatisk (PNG ved gjennomsiktighet)</option>
+            <option value="png">PNG</option>
+            <option value="jpeg">JPG (mindre fil, ingen gjennomsiktighet)</option>
+          </select>
+        </label>
+      </div>
+    </details>
+  </main>
+
+  <footer id="actions" class="actions" hidden>
+    <label class="check"><input type="checkbox" id="replace" checked> Erstatt originalbildet</label>
+    <div class="row">
+      <button type="button" id="btnInsert" class="primary grow">Sett inn i lysbildet</button>
+      <button type="button" id="btnDownload" title="Last ned som fil">Last ned</button>
+      <button type="button" id="btnResetAll" class="ghost" title="Tilbakestill alt">Tilbakestill</button>
+    </div>
+  </footer>
+
+  <div id="busy" class="busy" hidden><div class="spinner"></div><span id="busyText">Jobber ...</span></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

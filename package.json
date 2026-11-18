@@ -1,0 +1,19 @@
+{
+  "name": "pptimagepoint",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PowerPoint-tillegg for bakgrunnsfjerning, fargejustering og skalering av bilder.",
+  "scripts": {
+    "manifests": "python3 scripts/build-manifests.py",
+    "certs": "office-addin-dev-certs install",
+    "serve": "http-server src -p 3000 -S -C ~/.office-addin-dev-certs/localhost.crt -K ~/.office-addin-dev-certs/localhost.key -c-1",
+    "validate": "office-addin-manifest validate manifest.xml",
+    "test": "python3 tests/make_fixtures.py && node tests/run.js"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1",
+    "office-addin-dev-certs": "^1.13.0",
+    "office-addin-manifest": "^1.13.0",
+    "playwright": "^1.48.0"
+  }
+}
