@@ -18,10 +18,15 @@
       <img src="assets/icon-32.png" alt="" width="20" height="20">
       <span>PPTimagePoint</span>
     </div>
-    <div class="load-row">
-      <button id="btnGet" class="primary" type="button">Get selected picture</button>
-      <label class="button" for="fileInput">Open file</label>
+    <div class="icon-bar">
+      <button type="button" id="btnUndo" class="icon" data-icon="undo" data-tip="Undo (Ctrl+Z)" disabled></button>
+      <button type="button" id="btnRedo" class="icon" data-icon="redo" data-tip="Redo (Ctrl+Y)" disabled></button>
+      <span class="sep"></span>
+      <button type="button" id="btnGet" class="icon" data-icon="refresh" data-tip="Load the selected picture again"></button>
+      <label class="button icon" for="fileInput" data-icon="folder" data-tip="Open an image file" tabindex="0" role="button"></label>
       <input id="fileInput" type="file" accept="image/png,image/jpeg,image/gif,image/bmp,image/webp" hidden>
+      <span class="spacer"></span>
+      <button type="button" id="btnResetAll" class="reset" data-icon="reset" data-tip="Reset the picture to the original and start over" disabled>Reset</button>
     </div>
   </header>
 
@@ -38,14 +43,12 @@
     </div>
     <div id="toolbar" class="toolbar" hidden>
       <div class="seg" role="group" aria-label="Tools">
-        <button type="button" data-tool="pick" class="on" title="Click the background to remove it. Shift+click adds more key colors.">Pick color</button>
-        <button type="button" data-tool="erase" title="Paint over areas that should become transparent">Erase</button>
-        <button type="button" data-tool="restore" title="Paint back parts of the subject">Restore</button>
+        <button type="button" data-tool="pick" class="icon on" data-icon="pipette" data-tip="Pick background color: click the background. Shift+click adds more colors."></button>
+        <button type="button" data-tool="erase" class="icon" data-icon="eraser" data-tip="Erase: paint areas that should become transparent"></button>
+        <button type="button" data-tool="restore" class="icon" data-icon="brush" data-tip="Restore: paint back parts of the subject"></button>
       </div>
-      <button type="button" id="btnUndo" title="Undo (Ctrl+Z)" disabled>Undo</button>
-      <button type="button" id="btnRedo" title="Redo (Ctrl+Y)" disabled>Redo</button>
-      <button type="button" id="btnCompare" class="ghost" title="Hold to show the original">Before</button>
-      <select id="bgSelect" title="Preview background">
+      <button type="button" id="btnCompare" class="icon" data-icon="eye" data-tip="Hold to show the original"></button>
+      <select id="bgSelect" data-tip="Preview background">
         <option value="checker">Checkerboard</option>
         <option value="white">White</option>
         <option value="black">Black</option>
@@ -55,7 +58,7 @@
     <p id="previewHint" class="hint" hidden>Preview is hidden. Check the result on the slide (Live update), and use "Auto detect background" or show the preview to pick colors and use the brush.</p>
     <div id="infoRow" class="info-row" hidden>
       <span id="info" class="info muted"></span>
-      <button type="button" id="btnTogglePreview" class="linkbtn">Hide preview</button>
+      <button type="button" id="btnTogglePreview" class="icon small" data-icon="eyeOff" data-tip="Hide preview"></button>
     </div>
   </section>
 
@@ -65,7 +68,7 @@
       <div class="body">
         <p class="hint">Click the background color in the image. <kbd>Shift</kbd>+click adds more key colors (for shadows or gradients).</p>
         <div class="row">
-          <button type="button" id="btnAuto">Auto detect background</button>
+          <button type="button" id="btnAuto" data-icon="wand" data-tip="Find the background color along the image edges">Auto detect</button>
           <label class="switch"><input type="checkbox" id="keyEnabled"> On</label>
         </div>
         <div id="chips" class="chips"></div>
@@ -85,8 +88,7 @@
         <div class="sub">
           <div class="slider" data-key="brush" data-min="1" data-max="150" data-step="1" data-def="30" data-label="Brush size"></div>
           <div class="row">
-            <button type="button" id="btnUndoStroke">Undo stroke</button>
-            <button type="button" id="btnClearStrokes">Clear all strokes</button>
+            <button type="button" id="btnClearStrokes" data-icon="trash" data-tip="Remove all brush strokes">Clear strokes</button>
           </div>
         </div>
       </div>
@@ -95,67 +97,43 @@
     <details open id="secAdjust">
       <summary>Color and light</summary>
       <div class="body">
+        <div class="row end">
+          <button type="button" id="btnResetAdjust" class="icon small" data-icon="reset" data-tip="Reset color and light"></button>
+        </div>
         <h4>Light</h4>
-        <div class="slider adj" data-key="exposure" data-min="-2" data-max="2" data-step="0.05" data-def="0" data-label="Exposure"></div>
-        <div class="slider adj" data-key="brightness" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Brightness"></div>
-        <div class="slider adj" data-key="contrast" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Contrast"></div>
-        <div class="slider adj" data-key="highlights" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Highlights"></div>
-        <div class="slider adj" data-key="shadows" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Shadows"></div>
+        <div class="slider adj" data-key="exposure" data-min="-2" data-max="2" data-step="0.05" data-def="0" data-label="Exposure" data-track="light"></div>
+        <div class="slider adj" data-key="brightness" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Brightness" data-track="light"></div>
+        <div class="slider adj" data-key="contrast" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Contrast" data-track="contrast"></div>
+        <div class="slider adj" data-key="highlights" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Highlights" data-track="light"></div>
+        <div class="slider adj" data-key="shadows" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Shadows" data-track="light"></div>
         <h4>Color</h4>
         <div class="slider adj" data-key="temperature" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Temperature" data-track="temp"></div>
         <div class="slider adj" data-key="tint" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Tint" data-track="tint"></div>
         <div class="slider adj" data-key="hue" data-min="-180" data-max="180" data-step="1" data-def="0" data-label="Hue" data-track="hue"></div>
-        <div class="slider adj" data-key="saturation" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Saturation"></div>
-        <div class="slider adj" data-key="vibrance" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Vibrance"></div>
+        <div class="slider adj" data-key="saturation" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Saturation" data-track="sat"></div>
+        <div class="slider adj" data-key="vibrance" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Vibrance" data-track="vib"></div>
         <h4>Detail</h4>
-        <div class="slider adj" data-key="clarity" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Clarity"></div>
-        <div class="slider adj" data-key="sharpness" data-min="0" data-max="100" data-step="1" data-def="0" data-label="Sharpness"></div>
-        <div class="row">
-          <button type="button" id="btnResetAdjust">Reset color and light</button>
-        </div>
+        <div class="slider adj" data-key="clarity" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Clarity" data-track="detail"></div>
+        <div class="slider adj" data-key="sharpness" data-min="0" data-max="100" data-step="1" data-def="0" data-label="Sharpness" data-track="detail"></div>
         <p class="hint">Double-click a slider to reset it.</p>
       </div>
     </details>
 
-    <details id="secSize">
-      <summary>Size and resolution</summary>
-      <div class="body">
-        <div class="size-grid">
-          <label class="field">Width (px)<input type="number" id="outW" min="1" max="12000"></label>
-          <button type="button" id="lockBtn" class="lock on" title="Lock aspect ratio" aria-pressed="true">Locked</button>
-          <label class="field">Height (px)<input type="number" id="outH" min="1" max="12000"></label>
-        </div>
-        <div class="row wrap">
-          <button type="button" data-pct="25">25%</button>
-          <button type="button" data-pct="50">50%</button>
-          <button type="button" data-pct="100">100%</button>
-          <button type="button" data-pct="200">200%</button>
-          <button type="button" id="btnOptimal" title="The right resolution for the picture's size on the slide (220 ppi). Makes the file smaller with no visible loss.">Optimize for slide</button>
-        </div>
-        <p class="hint">Resampled with a Lanczos filter for sharp results, both down and up. The size on the slide stays the same.</p>
-        <label class="field">File format
-          <select id="format">
-            <option value="auto">Auto (PNG when transparent)</option>
-            <option value="png">PNG</option>
-            <option value="jpeg">JPEG (smaller file, no transparency)</option>
-          </select>
-        </label>
-      </div>
-    </details>
   </main>
 
   <footer id="actions" class="actions" hidden>
     <div class="live-row" id="liveWrap" hidden>
-      <label class="check" title="Changes are applied to the picture on the slide automatically, shortly after you stop adjusting"><input type="checkbox" id="live" checked> Live update on slide</label>
+      <label class="check" data-tip="Changes are applied to the picture on the slide automatically, shortly after you stop adjusting"><input type="checkbox" id="live" checked> Live update on slide</label>
       <span id="liveState" class="muted"></span>
     </div>
     <label class="check"><input type="checkbox" id="replace" checked> Replace original picture</label>
     <div class="row">
       <button type="button" id="btnInsert" class="primary grow">Insert into slide</button>
-      <button type="button" id="btnDownload" title="Save as a file">Download</button>
-      <button type="button" id="btnResetAll" class="ghost" title="Reset everything">Reset</button>
+      <button type="button" id="btnDownload" class="icon" data-icon="download" data-tip="Download as a file"></button>
     </div>
   </footer>
+
+ <div id="tip" class="tip" role="tooltip" hidden></div>
 
   <div id="busy" class="busy" hidden><div class="spinner"></div><span id="busyText">Working ...</span></div>
 

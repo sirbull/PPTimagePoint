@@ -107,7 +107,10 @@
     var proxy = imageDataFromSource(bmp, sx, sy, sw, sh, PROXY_MAX);
     if (bmp.close) bmp.close();
 
-    S.src = { full: full, proxy: proxy, name: opt.name || 'image', mime: blob.type || 'image/png', meta: opt.meta || null, capped: Math.max(sw, sh) > FULL_MAX };
+    S.src = { full: full, proxy: proxy, name: opt.name || 'image', mime: blob.type || 'image/png', meta: opt.meta || null, capped: Math.max(sw, sh) > FULL_MAX,
+      // Originalen slik den var da den ble hentet, for "Reset"
+      origBlob: blob, origLossless: !c.l && !c.t && !c.r && !c.b && Math.max(sw, sh) <= FULL_MAX,
+      origMeta: opt.meta ? Object.assign({}, opt.meta) : null, slideChanged: false };
     S.strokes = [];
     S.key.colors = []; S.key.seeds = []; S.key.enabled = false;
     S.adjust = Object.assign({}, Ops.DEFAULT_ADJUST);
@@ -348,7 +351,8 @@
    * Behandler bildet i full opploesning og legger det paa lysbildet.
    * live = true: stille oppdatering i bakgrunnen (ingen sperre av panelet).
    */
-  async function applyToSlide(live) {
+  async function applyToSlide(live, opts) {
+    opts = opts || {};
     if (!S.src) return;
     if (!live) status('');
     var key = editKey();
@@ -356,7 +360,7 @@
     if (!live) await busy(true, 'Processing at full resolution ...');
     else setLiveState('Updating slide ...');
     try {
-      if (Bridge.available && S.src.meta) {
+      if (Bridge.available && S.src.meta && !opts.original) {
         var present = await syncFromSlide();
         if (!present) {
           S.src.meta = null; S.slideSync = null;
@@ -367,13 +371,21 @@
           }
         }
       }
-      var res = renderFull();
-      var enc = await encode(res.image);
+      var res, enc;
+      if (opts.original && S.src.origLossless) {
+        // Legg tilbake den opprinnelige filen uendret (ingen ny komprimering)
+        res = { image: S.src.full, rect: { x: 0, y: 0, w: S.src.full.width, h: S.src.full.height } };
+        enc = { blob: S.src.origBlob, ext: (S.src.mime.split('/')[1] || 'png').replace('jpeg', 'jpg') };
+      } else {
+        res = renderFull();
+        enc = await encode(res.image);
+      }
       if (!Bridge.available) { download(enc); return; }
       if (!live) await busy(true, 'Inserting into the slide ...');
       var b64 = await blobToBase64(enc.blob);
       var replace = (live || $('replace').checked) && S.src.meta;
       var r = await Bridge.insertImage(b64, placementFor(res.rect), replace ? S.src.meta : null);
+      S.src.slideChanged = !opts.original;
       S.slideSync = r && r.meta ? {
         rect: res.rect,
         geom: { left: r.meta.left, top: r.meta.top, width: r.meta.width, height: r.meta.height }
@@ -410,6 +422,29 @@
   }
 
   function doInsert() { return applyToSlide(false); }
+
+  /** Setter alt tilbake til slik bildet var da det ble hentet, ogsaa paa lysbildet. */
+  async function resetToOriginal() {
+    if (!S.src || live_.running) return;
+    var F = S.src.full;
+    S.adjust = Object.assign({}, Ops.DEFAULT_ADJUST);
+    S.key.colors = []; S.key.seeds = []; S.key.enabled = false;
+    S.strokes = []; S.trim = false;
+    S.out = { w: F.width, h: F.height, lock: true };
+    S.crop = { x: 0, y: 0, w: F.width, h: F.height };
+    cache = {};
+    syncUI(); render();
+    if (Bridge.available && S.src.meta && S.src.origMeta && S.src.slideChanged) {
+      var om = S.src.origMeta;
+      S.src.meta = Object.assign({}, S.src.meta, { left: om.left, top: om.top, width: om.width, height: om.height });
+      live_.running = true;
+      try { await applyToSlide(false, { original: true }); } finally { live_.running = false; }
+      live_.applied = editKey(); live_.lastKey = live_.applied;
+      status('The picture is back to the original.', 'ok');
+    } else {
+      status('All changes are reset.', 'ok');
+    }
+  }
 
   /* ---------------- Angre / gjoer om ---------------- */
 
@@ -476,6 +511,7 @@
     var dirty = S.src && snapshotKey() !== hist.committed;
     $('btnUndo').disabled = !S.src || (!hist.past.length && !dirty);
     $('btnRedo').disabled = !S.src || !hist.future.length;
+    $('btnResetAll').disabled = !S.src;
   }
 
   /* ---------------- Skjul forhaandsvisning ---------------- */
@@ -490,7 +526,9 @@
     $('btnCompare').hidden = previewHidden;
     $('bgSelect').hidden = previewHidden;
     $('previewHint').hidden = !hasImg || !previewHidden;
-    $('btnTogglePreview').textContent = previewHidden ? 'Show preview' : 'Hide preview';
+    setIcon($('btnTogglePreview'), previewHidden ? 'eye' : 'eyeOff');
+    $('btnTogglePreview').dataset.tip = previewHidden ? 'Show preview' : 'Hide preview';
+    $('btnTogglePreview').setAttribute('aria-label', $('btnTogglePreview').dataset.tip);
   }
 
   function bindPreviewToggle() {
@@ -614,12 +652,6 @@
     ['tolerance', 'softness', 'choke', 'feather'].forEach(function (k) { setSlider(k, S.key[k]); });
     Object.keys(Ops.DEFAULT_ADJUST).forEach(function (k) { setSlider(k, S.adjust[k]); });
     setSlider('brush', S.brush);
-    $('outW').value = S.out.w; $('outH').value = S.out.h;
-    $('lockBtn').classList.toggle('on', S.out.lock);
-    $('lockBtn').textContent = S.out.lock ? 'Locked' : 'Free';
-    $('lockBtn').setAttribute('aria-pressed', String(S.out.lock));
-    $('format').value = S.format;
-    $('btnOptimal').disabled = !(S.src && S.src.meta && S.src.meta.width);
     renderChips();
   }
 
@@ -750,15 +782,11 @@
       .then(function () { busy(false); });
   }
 
-  function setOutW(w) {
-    var F = S.src.full;
-    S.out.w = Math.max(1, Math.round(w));
-    if (S.out.lock) S.out.h = Math.max(1, Math.round(S.out.w * F.height / F.width));
-    syncUI(); updateInfo();
-  }
-
   function bindControls() {
     $('btnGet').addEventListener('click', getFromPowerPoint);
+    document.querySelector('label[for="fileInput"]').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('fileInput').click(); }
+    });
     $('fileInput').addEventListener('change', function (e) { openFile(e.target.files[0]); e.target.value = ''; });
 
     document.querySelectorAll('[data-tool]').forEach(function (b) {
@@ -796,59 +824,82 @@
     $('fromEdges').addEventListener('change', function (e) { S.key.fromEdges = e.target.checked; render(); });
     $('defringe').addEventListener('change', function (e) { S.key.defringe = e.target.checked; render(); });
     $('trim').addEventListener('change', function (e) { S.trim = e.target.checked; updateInfo(); });
-    $('btnUndoStroke').addEventListener('click', function () { S.strokes.pop(); render(); });
     $('btnClearStrokes').addEventListener('click', function () { S.strokes = []; render(); });
 
     $('btnResetAdjust').addEventListener('click', function () {
       S.adjust = Object.assign({}, Ops.DEFAULT_ADJUST); syncUI(); render();
     });
 
-    $('outW').addEventListener('change', function (e) { if (S.src) setOutW(+e.target.value || 1); });
-    $('outH').addEventListener('change', function (e) {
-      if (!S.src) return;
-      var F = S.src.full;
-      S.out.h = Math.max(1, Math.round(+e.target.value || 1));
-      if (S.out.lock) S.out.w = Math.max(1, Math.round(S.out.h * F.width / F.height));
-      syncUI(); updateInfo();
-    });
-    $('lockBtn').addEventListener('click', function () {
-      S.out.lock = !S.out.lock;
-      if (S.out.lock && S.src) setOutW(S.out.w); else syncUI();
-    });
-    document.querySelectorAll('[data-pct]').forEach(function (b) {
-      b.addEventListener('click', function () { if (S.src) { S.out.lock = true; setOutW(S.src.full.width * (+b.dataset.pct) / 100); } });
-    });
-    $('btnOptimal').addEventListener('click', function () {
-      var m = S.src && S.src.meta;
-      if (!m) return;
-      var target = Math.round(m.width / 72 * 220);
-      var F = S.src.full;
-      S.out.lock = true;
-      if (target >= F.width) {
-        setOutW(F.width);
-        status('The image already has the right or a lower resolution for its size on the slide.', 'ok');
-      } else {
-        setOutW(target);
-        status('Set to ' + S.out.w + ' × ' + S.out.h + ' px (220 ppi on the slide).', 'ok');
-      }
-    });
-    $('format').addEventListener('change', function (e) { S.format = e.target.value; });
-
     $('btnInsert').addEventListener('click', doInsert);
     $('btnDownload').addEventListener('click', doDownload);
-    $('btnResetAll').addEventListener('click', function () {
-      if (!S.src) return;
-      S.adjust = Object.assign({}, Ops.DEFAULT_ADJUST);
-      S.key.colors = []; S.key.seeds = []; S.key.enabled = false;
-      S.strokes = []; S.trim = false;
-      S.out = { w: S.src.full.width, h: S.src.full.height, lock: true };
-      cache = {};
-      syncUI(); render();
-    });
+    $('btnResetAll').addEventListener('click', resetToOriginal);
     window.addEventListener('resize', updateCursorSize);
   }
 
+  /* ---------------- Ikoner og verktoeytips ---------------- */
+
+  var ICONS = {
+    undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+    redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+    refresh: '<path d="M20 11a8 8 0 1 0-2.3 6.2"/><path d="M20 4v7h-7"/>',
+    folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    reset: '<path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v5h5"/>',
+    pipette: '<path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4z"/>',
+    eraser: '<path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L11 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/>',
+    brush: '<path d="m9.1 11.9 8-8.1a2.9 2.9 0 1 1 4.1 4.1l-8.1 8"/><path d="M7.1 14.9c-1.7 0-3 1.4-3 3 0 1.3-2.5 1.5-2 2 1.1 1.1 2.5 2 4 2 2.2 0 4-1.8 4-4a3 3 0 0 0-3-3z"/>',
+    eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    eyeOff: '<path d="m3 3 18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2"/><path d="M6.6 6.6C3.9 8.3 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+    wand: '<path d="m15 4 1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/><path d="M3 21 14 10"/><path d="m19 13 .5 1 1 .5-1 .5-.5 1-.5-1-1-.5 1-.5z"/>',
+    trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m6 6 1 14h10l1-14"/>',
+    download: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>'
+  };
+
+  function setIcon(el, name) {
+    var old = el.querySelector('svg.ic');
+    if (old) old.remove();
+    el.insertAdjacentHTML('afterbegin', '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + ICONS[name] + '</svg>');
+  }
+
+  function initIcons() {
+    document.querySelectorAll('[data-icon]').forEach(function (el) {
+      setIcon(el, el.dataset.icon);
+      if (el.dataset.tip && !el.getAttribute('aria-label')) el.setAttribute('aria-label', el.dataset.tip);
+    });
+  }
+
+  /** Egne verktoeytips: vises med en gang og holdes innenfor panelet. */
+  function initTooltips() {
+    var tip = $('tip'), current = null, timer = null;
+    function hide() { clearTimeout(timer); tip.hidden = true; current = null; }
+    function show(el) {
+      tip.textContent = el.dataset.tip;
+      tip.hidden = false;
+      var r = el.getBoundingClientRect(), t = tip.getBoundingClientRect();
+      var left = Math.min(window.innerWidth - t.width - 6, Math.max(6, r.left + r.width / 2 - t.width / 2));
+      var top = r.bottom + 6;
+      if (top + t.height > window.innerHeight - 4) top = r.top - t.height - 6;
+      tip.style.left = left + 'px'; tip.style.top = top + 'px';
+    }
+    document.addEventListener('mouseover', function (e) {
+      var el = e.target.closest && e.target.closest('[data-tip]');
+      if (el === current) return;
+      hide();
+      if (!el) return;
+      current = el;
+      timer = setTimeout(function () { if (current === el) show(el); }, 350);
+    });
+    document.addEventListener('focusin', function (e) {
+      var el = e.target.closest && e.target.closest('[data-tip]');
+      if (el && e.target.matches(':focus-visible')) { current = el; show(el); }
+    });
+    document.addEventListener('focusout', hide);
+    document.addEventListener('pointerdown', hide);
+    window.addEventListener('scroll', hide, true);
+  }
+
   async function start() {
+    initIcons();
+    initTooltips();
     buildSliders();
     bindControls();
     bindStage();
@@ -857,17 +908,14 @@
     var inPPT = await Bridge.init();
     if (!inPPT) {
       $('btnGet').hidden = true;
-      $('btnInsert').hidden = true;
+      $('btnInsert').textContent = 'Download image';
+      $('btnDownload').hidden = true;
       $('replace').parentElement.hidden = true;
-      $('btnDownload').classList.add('primary', 'grow');
-      $('btnDownload').textContent = 'Download image';
       status('Running outside PowerPoint. You can try the tools and download the result.');
       return;
     }
     $('emptyTitle').textContent = 'Select a picture on the slide.';
     $('emptyText').textContent = 'It opens here automatically. You can also drop an image here or paste one with Ctrl+V.';
-    $('btnGet').textContent = 'Reload picture';
-    $('btnGet').title = 'Load the selected picture again (discards changes)';
     Bridge.onSelectionChanged(onSelectionChanged);
     $('liveWrap').hidden = false;
     live_.on = $('live').checked;

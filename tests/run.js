@@ -318,6 +318,44 @@ async function decodeB64Png(page, b64) {
     await page.close();
   }
 
+  /* ---- 6. Reset-knappen setter originalen tilbake ---- */
+  console.log('Test 6: Reset legger tilbake originalen');
+  {
+    const page = await browser.newPage({ viewport: { width: 360, height: 900 } });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.route('**/appsforoffice.microsoft.com/**', (r) => r.fulfill({ body: '', contentType: 'text/javascript' }));
+    await page.addInitScript(() => { window.__initialSelection = '2'; });
+    await page.addInitScript(officeMock, pptxB64);
+    await page.goto(base + '/src/taskpane.html');
+    await page.waitForSelector('#stage:not([hidden])');
+    check(await page.isDisabled('#btnResetAll') === false, 'Reset-knappen er aktiv når et bilde er lastet');
+    // fjern bakgrunnen og juster farger, vent paa live
+    const box = await page.locator('#view').boundingBox();
+    await page.mouse.click(box.x + 4, box.y + 4);
+    await page.evaluate(() => { const i = document.getElementById('sl-hue'); i.value = 90; i.dispatchEvent(new Event('input')); });
+    await page.waitForFunction(() => window.__log.some((l) => l.op === 'delete'), null, { timeout: 10000 });
+    // flytt bildet litt i PowerPoint, saa Reset ma legge det tilbake paa opprinnelig plass
+    await page.evaluate(() => { const sh = window.__shapes.find((x) => x.id === '101'); sh.left += 40; });
+    await page.click('#btnResetAll');
+    await page.waitForFunction(() => window.__log.filter((l) => l.op === 'delete').length === 2, null, { timeout: 10000 });
+    const last = await page.evaluate(() => window.__log.filter((l) => l.op === 'insert')[1]);
+    const orig = fs.readFileSync(path.join(__dirname, 'fixtures/white.png')).toString('base64');
+    check(last.data === orig, 'den opprinnelige filen legges tilbake uendret');
+    check(last.opts.imageLeft === 36 && last.opts.imageTop === 36 && last.opts.imageWidth === 144, 'på opprinnelig plass ' + JSON.stringify(last.opts));
+    const st = await page.evaluate(() => [window.__pip.S.adjust.hue, window.__pip.S.key.enabled, document.getElementById('sl-hue').value]);
+    check(st[0] === 0 && st[1] === false && st[2] === '0', 'alle innstillinger nullstilt ' + st);
+    await page.waitForTimeout(1500);
+    check(await page.evaluate(() => window.__log.length === 4), 'live legger ikke inn noe ekstra etter Reset');
+    // verktoeytips
+    await page.hover('#btnResetAll');
+    await page.waitForTimeout(600);
+    check(await page.isVisible('#tip') && /original/.test(await page.locator('#tip').textContent()), 'verktøytips vises ved hover');
+    await page.screenshot({ path: path.join(SHOTS, 'icons.png') });
+    check(errors.length === 0, 'ingen JS-feil ' + errors.join(' | '));
+    await page.close();
+  }
+
   await browser.close();
   srv.close();
   console.log(failures ? `\n${failures} test(er) feilet` : '\nAlle tester bestått');

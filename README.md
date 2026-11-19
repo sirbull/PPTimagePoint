@@ -23,7 +23,9 @@ Alt skjer lokalt i PowerPoint. Ingen bilder sendes til noen server.
    * **Choke / expand edge** og **Feather** rydder i kanten.
    * **Despill** fjerner f.eks. grønt skjær fra greenscreen.
    * **Erase / Restore** er pensler for å rette opp det fargenøkkelen ikke klarer alene.
-   * Hold inne **Before** for å sammenligne med originalen.
+   * Hold inne øyeknappen for å sammenligne med originalen.
+   * **Reset** øverst til høyre legger originalbildet tilbake på lysbildet, på opprinnelig plass, og nullstiller alt.
+   * Alle knapper har forklaring når du holder musepekeren over dem.
    * **Ctrl+Z** angrer og **Ctrl+Y** gjør om (eller knappene **Undo** og **Redo**). Snarveiene virker når panelet har fokus. Står markøren i lysbildet, går Ctrl+Z til PowerPoint i stedet.
 5. Med **Live update on slide** (på som standard) oppdateres bildet på lysbildet automatisk et øyeblikk etter at du slipper en glidebryter eller penselen. Slår du det av, bruker du **Insert into slide** når du er ferdig.
 
@@ -33,7 +35,7 @@ Bruk PowerPoints egne verktøy (Bildeformat > Beskjær, eller dra i hjørnene). 
 
 ### Skjule forhåndsvisningen
 
-Med **Hide preview** under forhåndsvisningen jobber du bare mot lysbildet (med Live påslått). Pipetten og penselen trenger forhåndsvisningen, fordi PowerPoint ikke lar tillegg ta imot klikk på selve lysbildet. Valget huskes.
+Med øyeknappen til høyre under forhåndsvisningen jobber du bare mot lysbildet (med Live påslått). Pipetten og penselen trenger forhåndsvisningen, fordi PowerPoint ikke lar tillegg ta imot klikk på selve lysbildet. Valget huskes.
 
 ### Designforslag (Designer) dukker opp
 
