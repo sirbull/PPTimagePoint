@@ -13,8 +13,8 @@ Alt skjer lokalt i PowerPoint. Ingen bilder sendes til noen server.
 
 ## Slik bruker du det
 
-1. Marker et bilde på lysbildet.
-2. Klikk **Hjem > Picture Tools** for å åpne panelet, og trykk **Get selected picture**.
+1. Klikk **Hjem > Picture Tools** for å åpne panelet.
+2. Marker et bilde på lysbildet. Det hentes automatisk inn i panelet, og når du klikker på et annet bilde, følger panelet etter.
 3. Klikk på bakgrunnen i forhåndsvisningen. Bakgrunnen forsvinner med en gang.
 4. Finjuster:
    * **Tolerance**: hvor like bakgrunnsfargen pikslene må være for å fjernes.
@@ -24,7 +24,15 @@ Alt skjer lokalt i PowerPoint. Ingen bilder sendes til noen server.
    * **Despill** fjerner f.eks. grønt skjær fra greenscreen.
    * **Erase / Restore** er pensler for å rette opp det fargenøkkelen ikke klarer alene.
    * Hold inne **Before** for å sammenligne med originalen.
-5. Trykk **Insert into slide**.
+5. Med **Live update on slide** (på som standard) oppdateres bildet på lysbildet automatisk et øyeblikk etter at du slipper en glidebryter eller penselen. Slår du det av, bruker du **Insert into slide** når du er ferdig.
+
+### Om live-oppdatering
+
+PowerPoint lar ikke tillegg tegne direkte i et bilde, så live-oppdatering betyr at bildet på lysbildet byttes ut med en ny versjon i full oppløsning. Det har tre følger:
+
+* Panelet jobber alltid fra originalpikslene så lenge bildet er åpent, så justeringene kan endres og nullstilles uten tap. Markerer du et annet bilde og så går tilbake, er det den redigerte versjonen som lastes inn.
+* Hver oppdatering blir et eget angresteg i PowerPoint (Ctrl+Z).
+* Rotasjon, rammer og effekter på bildet følger ikke med når det byttes ut.
 
 Panelet henter originalfilen som ligger inne i presentasjonen, ikke en skjermkopi, så du jobber alltid i full oppløsning (opptil 6000 px på lengste side). Beskjæring du har gjort i PowerPoint blir tatt med.
 

@@ -122,6 +122,7 @@ kbd { font: inherit; font-size: 11px; border: 1px solid var(--line); border-bott
 .actions { position: fixed; left: 0; right: 0; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); padding: 6px 12px 10px; z-index: 6; }
 .actions .row { margin: 4px 0 0; }
 .actions .check { margin: 0; font-size: 12px; }
+.live-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
 
 .busy { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; gap: 10px; color: #fff; z-index: 20; font-weight: 600; }
 .spinner { width: 22px; height: 22px; border: 3px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; }

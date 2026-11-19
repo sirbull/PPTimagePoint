@@ -35,6 +35,18 @@
       } catch (e) { /* ikke kritisk */ }
     },
 
+    /** Rask sjekk av markeringen: { id } for markert bilde, ellers null. */
+    getSelectedImageId: async function () {
+      if (!Bridge.available || !global.PowerPoint || !Bridge.supports('1.5')) return null;
+      return PowerPoint.run(async function (ctx) {
+        var shapes = ctx.presentation.getSelectedShapes();
+        shapes.load('items/id,items/type');
+        await ctx.sync();
+        var img = shapes.items.filter(function (s) { return s.type === 'Image'; })[0];
+        return img ? { id: img.id } : null;
+      });
+    },
+
     /**
      * Henter markert bilde. Returnerer { bytes, mime, crop, name, meta }.
      * meta beskriver plassering paa lysbildet (punkter) for aa kunne erstatte.

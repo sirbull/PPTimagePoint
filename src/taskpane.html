@@ -29,8 +29,8 @@
 
   <section class="stage-wrap">
     <div id="empty" class="empty">
-      <p><strong>Select a picture in PowerPoint</strong> and click "Get selected picture".</p>
-      <p class="muted">You can also drop an image here or paste one with Ctrl+V.</p>
+      <p><strong id="emptyTitle">Select a picture in PowerPoint</strong></p>
+      <p class="muted" id="emptyText">You can also drop an image here or paste one with Ctrl+V.</p>
     </div>
     <div id="stage" class="stage checker" hidden>
       <canvas id="view"></canvas>
@@ -139,6 +139,10 @@
   </main>
 
   <footer id="actions" class="actions" hidden>
+    <div class="live-row" id="liveWrap" hidden>
+      <label class="check" title="Changes are applied to the picture on the slide automatically, shortly after you stop adjusting"><input type="checkbox" id="live" checked> Live update on slide</label>
+      <span id="liveState" class="muted"></span>
+    </div>
     <label class="check"><input type="checkbox" id="replace" checked> Replace original picture</label>
     <div class="row">
       <button type="button" id="btnInsert" class="primary grow">Insert into slide</button>

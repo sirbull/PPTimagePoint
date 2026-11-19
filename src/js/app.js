@@ -110,8 +110,12 @@
     S.src = { full: full, proxy: proxy, name: opt.name || 'image', mime: blob.type || 'image/png', meta: opt.meta || null, capped: Math.max(sw, sh) > FULL_MAX };
     S.strokes = [];
     S.key.colors = []; S.key.seeds = []; S.key.enabled = false;
-    S.out.w = full.width; S.out.h = full.height;
+    S.adjust = Object.assign({}, Ops.DEFAULT_ADJUST);
+    S.trim = false;
+    S.out = { w: full.width, h: full.height, lock: true };
     cache = {};
+    live_.applied = editKey(); live_.lastKey = live_.applied;
+    setLiveState('');
 
     var view = $('view');
     view.width = proxy.width; view.height = proxy.height;
@@ -126,6 +130,7 @@
 
   async function getFromPowerPoint() {
     status('');
+    loading = true;
     await busy(true, 'Getting the image from PowerPoint ...');
     try {
       var pic = await Bridge.getSelectedImage();
@@ -133,8 +138,35 @@
     } catch (e) {
       status(e.message || String(e), 'err');
     } finally {
+      loading = false;
       busy(false);
     }
+  }
+
+  /* ---------------- Automatisk henting ved markering ---------------- */
+
+  var loading = false;        // henter et bilde akkurat naa
+  var suppressUntil = 0;      // ignorer markeringer vi selv har laget (ved innsetting)
+  var selTimer = null;
+
+  async function autoLoad() {
+    if (loading || live_.running || Date.now() < suppressUntil) { retryLater(); return; }
+    var info;
+    try { info = await Bridge.getSelectedImageId(); } catch (e) { return; }
+    if (loading || live_.running || Date.now() < suppressUntil) { retryLater(); return; }
+    if (!info) return;
+    if (S.src && S.src.meta && S.src.meta.shapeId === info.id) return;
+    await getFromPowerPoint();
+  }
+
+  function retryLater() {
+    clearTimeout(selTimer);
+    selTimer = setTimeout(autoLoad, 400);
+  }
+
+  function onSelectionChanged() {
+    clearTimeout(selTimer);
+    selTimer = setTimeout(autoLoad, 250);
   }
 
   /* ---------------- Behandling ---------------- */
@@ -251,17 +283,24 @@
     return { left: m.left + rect.x * px, top: m.top + rect.y * py, width: rect.w * px, height: rect.h * py };
   }
 
-  async function doInsert() {
+  /**
+   * Behandler bildet i full opploesning og legger det paa lysbildet.
+   * live = true: stille oppdatering i bakgrunnen (ingen sperre av panelet).
+   */
+  async function applyToSlide(live) {
     if (!S.src) return;
-    status('');
-    await busy(true, 'Processing at full resolution ...');
+    if (!live) status('');
+    var key = editKey();
+    suppressUntil = Infinity;
+    if (!live) await busy(true, 'Processing at full resolution ...');
+    else setLiveState('Updating slide ...');
     try {
       var res = renderFull();
       var enc = await encode(res.image);
       if (!Bridge.available) { download(enc); return; }
-      await busy(true, 'Inserting into the slide ...');
+      if (!live) await busy(true, 'Inserting into the slide ...');
       var b64 = await blobToBase64(enc.blob);
-      var replace = $('replace').checked && S.src.meta;
+      var replace = (live || $('replace').checked) && S.src.meta;
       var r = await Bridge.insertImage(b64, placementFor(res.rect), replace ? S.src.meta : null);
       if (r && r.meta) {
         // Videre arbeid gjelder det nye bildet, men vi beholder originalpikslene i panelet
@@ -274,14 +313,54 @@
       } else if (replace) {
         S.src.meta = null;
       }
-      var msg = 'Image inserted (' + res.image.width + ' × ' + res.image.height + ' px).';
-      if (replace && r && !r.deleted) msg += ' The original could not be removed automatically. Delete it manually if needed.';
-      status(msg, 'ok');
+      live_.applied = key;
+      if (live) {
+        setLiveState('Slide updated');
+        if (replace && r && !r.deleted) status('The previous version could not be removed automatically. Delete it manually.', 'err');
+      } else {
+        var msg = 'Image inserted (' + res.image.width + ' × ' + res.image.height + ' px).';
+        if (replace && r && !r.deleted) msg += ' The original could not be removed automatically. Delete it manually if needed.';
+        status(msg, 'ok');
+      }
     } catch (e) {
+      if (live) { live_.on = false; $('live').checked = false; syncLiveUI(); setLiveState(''); }
       status(e.message || String(e), 'err');
     } finally {
-      busy(false);
+      // Det nye bildet er markert og har samme id som vi lagret, saa det lastes ikke paa nytt.
+      // Fikk vi ikke vite id-en, venter vi litt foer markeringen tolkes som et nytt valg.
+      suppressUntil = S.src && S.src.meta ? 0 : Date.now() + 1500;
+      if (!live) busy(false);
     }
+  }
+
+  function doInsert() { return applyToSlide(false); }
+
+  /* ---------------- Live-oppdatering av lysbildet ---------------- */
+
+  var live_ = { on: false, applied: null, lastKey: null, changedAt: 0, running: false, drawing: false };
+
+  function editKey() {
+    if (!S.src) return '';
+    return JSON.stringify([S.adjust, keyActive() ? keyParamsKey() : 0, S.key.defringe,
+      S.strokes.map(function (st) { return st.pts.length; }), S.trim, S.out.w, S.out.h, S.format]);
+  }
+
+  function setLiveState(t) { $('liveState').textContent = t || ''; }
+
+  function syncLiveUI() {
+    var on = live_.on && Bridge.available;
+    $('replace').parentElement.hidden = on || !Bridge.available;
+    $('btnInsert').textContent = on ? 'Apply now' : 'Insert into slide';
+  }
+
+  async function liveTick() {
+    if (!live_.on || !S.src || !S.src.meta || live_.running || loading) return;
+    var key = editKey();
+    if (key !== live_.lastKey) { live_.lastKey = key; live_.changedAt = Date.now(); return; }
+    if (key === live_.applied || live_.drawing || !$('busy').hidden) return;
+    if (Date.now() - live_.changedAt < 600) return;
+    live_.running = true;
+    try { await applyToSlide(true); } finally { live_.running = false; }
   }
 
   async function doDownload() {
@@ -439,6 +518,7 @@
       if (S.tool === 'pick') { pickAt(pos, e.shiftKey || e.ctrlKey || e.metaKey); return; }
       view.setPointerCapture(e.pointerId);
       drawing = { mode: S.tool, r: S.brush / 1000, pts: [{ x: pos.x, y: pos.y }] };
+      live_.drawing = true;
       S.strokes.push(drawing);
       render();
     });
@@ -453,7 +533,7 @@
       }
       if (drawing) { drawing.pts.push({ x: pos.x, y: pos.y }); render(); }
     });
-    var end = function () { drawing = null; };
+    var end = function () { drawing = null; live_.drawing = false; };
     view.addEventListener('pointerup', end);
     view.addEventListener('pointercancel', end);
     view.addEventListener('pointerleave', function () { cursor.hidden = true; });
@@ -595,7 +675,19 @@
       $('btnDownload').classList.add('primary', 'grow');
       $('btnDownload').textContent = 'Download image';
       status('Running outside PowerPoint. You can try the tools and download the result.');
+      return;
     }
+    $('emptyTitle').textContent = 'Select a picture on the slide.';
+    $('emptyText').textContent = 'It opens here automatically. You can also drop an image here or paste one with Ctrl+V.';
+    $('btnGet').textContent = 'Reload picture';
+    $('btnGet').title = 'Load the selected picture again (discards changes)';
+    Bridge.onSelectionChanged(onSelectionChanged);
+    $('liveWrap').hidden = false;
+    live_.on = $('live').checked;
+    $('live').addEventListener('change', function (e) { live_.on = e.target.checked; syncLiveUI(); if (!live_.on) setLiveState(''); });
+    syncLiveUI();
+    setInterval(liveTick, 250);
+    autoLoad();
   }
 
   window.__pip = { S: S, renderFull: renderFull, loadBlob: loadBlob, renderNow: renderNow, cache: function () { return cache; }, pickAt: pickAt, syncUI: syncUI };

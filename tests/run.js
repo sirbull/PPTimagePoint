@@ -30,7 +30,8 @@ const officeMock = (pptxB64) => {
     { id: '2', name: 'Picture 1', type: 'Image', left: 36, top: 36, width: 144, height: 144 },
     { id: '3', name: 'Testbilde', type: 'Image', left: 216, top: 72, width: 360, height: 225 },
   ];
-  let selected = '3';
+  let selected = window.__initialSelection || '3';
+  window.__select = (id) => { selected = id; window.__selHandler && window.__selHandler({}); };
   const coll = (items) => ({ items, load() {} });
   const ctx = {
     sync: async () => {},
@@ -51,7 +52,7 @@ const officeMock = (pptxB64) => {
     context: {
       requirements: { isSetSupported: () => true },
       document: {
-        addHandlerAsync() {},
+        addHandlerAsync(t, cb) { window.__selHandler = cb; },
         getSelectedDataAsync(t, cb) { cb({ status: 'failed' }); },
         setSelectedDataAsync(data, opts, cb) {
           window.__log.push({ op: 'insert', data, opts });
@@ -135,8 +136,9 @@ async function decodeB64Png(page, b64) {
     await page.addInitScript(officeMock, pptxB64);
     await page.goto(base + '/src/taskpane.html');
     await page.waitForFunction(() => window.Bridge && window.Bridge.available);
-    await page.click('#btnGet');
     await page.waitForSelector('#stage:not([hidden])');
+    check(true, 'markert bilde lastes automatisk når panelet åpnes');
+    await page.uncheck('#live');
     const src = await page.evaluate(() => ({ w: window.__pip.S.src.full.width, h: window.__pip.S.src.full.height, meta: window.__pip.S.src.meta }));
     check(src.w === 800 && src.h === 1000, 'riktig bilde hentet, med PowerPoint-beskjæring brukt (' + src.w + 'x' + src.h + ')');
     check(src.meta && src.meta.shapeId === '3', 'plassering lest fra figuren');
@@ -192,6 +194,48 @@ async function decodeB64Png(page, b64) {
     const r = await page.evaluate(() => { const res = window.__pip.renderFull(); const d = res.image.data; const w = res.image.width; const a = (x, y) => d[(y * w + x) * 4 + 3]; return [a(10, 10), a(450, 450), a(450, 160)]; });
     check(r[0] === 0 && r[1] === 255 && r[2] === 255, 'hvit bakgrunn fjernet, motiv beholdt ' + r);
     await page.screenshot({ path: path.join(SHOTS, 'dark.png'), fullPage: true });
+    await page.close();
+  }
+
+  /* ---- 4. Bytte markering og live-oppdatering ---- */
+  console.log('Test 4: følger markeringen og oppdaterer lysbildet live');
+  {
+    const page = await browser.newPage({ viewport: { width: 360, height: 900 } });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.route('**/appsforoffice.microsoft.com/**', (r) => r.fulfill({ body: '', contentType: 'text/javascript' }));
+    await page.addInitScript(() => { window.__initialSelection = 'none'; });
+    await page.addInitScript(officeMock, pptxB64);
+    await page.goto(base + '/src/taskpane.html');
+    await page.waitForFunction(() => window.Bridge && window.Bridge.available);
+    await page.waitForTimeout(500);
+    check(await page.isVisible('#empty'), 'ingenting lastes når ingen bilde er markert');
+    await page.evaluate(() => window.__select('3'));
+    await page.waitForSelector('#stage:not([hidden])');
+    check(await page.evaluate(() => window.__pip.S.src.meta.shapeId === '3'), 'bilde lastes når det markeres');
+    await page.waitForTimeout(1200);
+    check(await page.evaluate(() => window.__log.length === 0), 'ingen endring på lysbildet før du justerer noe');
+    // juster metning: live skal oppdatere lysbildet etter en kort pause
+    await page.evaluate(() => { const i = document.getElementById('sl-saturation'); i.value = 50; i.dispatchEvent(new Event('input')); });
+    await page.waitForFunction(() => window.__log.some((l) => l.op === 'delete'), null, { timeout: 10000 });
+    const log = await page.evaluate(() => window.__log.map((l) => ({ op: l.op, id: l.id })));
+    check(log.length === 2 && log[0].op === 'insert' && log[1].id === '3', 'live: bildet erstattet automatisk ' + JSON.stringify(log));
+    check(/updated/i.test(await page.locator('#liveState').textContent()), 'live-status vises');
+    await page.waitForTimeout(2500);
+    check(await page.evaluate(() => window.__log.length === 2), 'ingen ekstra oppdateringer eller ny innlasting etter live-oppdateringen');
+    check(await page.evaluate(() => window.__pip.S.adjust.saturation === 50), 'justeringene beholdes etter live-oppdateringen');
+    // ny justering erstatter den nye versjonen
+    await page.evaluate(() => { const i = document.getElementById('sl-hue'); i.value = 40; i.dispatchEvent(new Event('input')); });
+    await page.waitForFunction(() => window.__log.filter((l) => l.op === 'delete').length === 2, null, { timeout: 10000 });
+    check(await page.evaluate(() => window.__log.filter((l) => l.op === 'delete')[1].id === '101'), 'andre live-oppdatering erstatter forrige versjon');
+    // marker et annet bilde: det lastes inn
+    await page.evaluate(() => window.__select('2'));
+    await page.waitForFunction(() => window.__pip.S.src.meta.shapeId === '2', null, { timeout: 10000 });
+    const dims = await page.evaluate(() => [window.__pip.S.src.full.width, window.__pip.S.src.full.height]);
+    check(dims[0] === 900 && dims[1] === 900, 'bytter til nytt markert bilde (' + dims + ')');
+    check(await page.evaluate(() => window.__pip.S.adjust.hue === 0 && window.__pip.S.adjust.saturation === 0), 'nytt bilde starter med nullstilte justeringer');
+    await page.screenshot({ path: path.join(SHOTS, 'live.png') });
+    check(errors.length === 0, 'ingen JS-feil ' + errors.join(' | '));
     await page.close();
   }
 
