@@ -15,6 +15,7 @@
     strokes: [],
     trim: false,
     brush: 30,
+    hardness: 65,
     tool: 'pick',
     out: { w: 0, h: 0, lock: true },
     format: 'auto',
@@ -138,7 +139,7 @@
     applyPreviewPref();
     syncUI();
     render();
-    var msg = 'Image loaded (' + W + ' × ' + H + ' px).';
+    var msg = 'Image loaded (' + sw + ' × ' + sh + ' px).';
     if (S.src.capped) msg += ' Processing at ' + full.width + ' × ' + full.height + ' px.';
     status(msg, 'ok');
   }
@@ -372,39 +373,18 @@
     return JSON.stringify([k.colors.map(function (c) { return [c.r, c.g, c.b]; }), k.seeds, k.tolerance, k.softness, k.mode, k.fromEdges, k.choke, k.feather]);
   }
 
-  function keyActive() { return S.key.enabled && S.key.colors.length > 0; }
+  function keyActive() { return Pipeline.keyActive(S); }
 
-  /** Lager alfakart for et bilde. region kan gis inn (fra forhaandsvisningen). */
-  function buildAlpha(img, isProxy) {
-    var w = img.width, h = img.height, s = scaleOf(img);
-    var alpha = null;
-    if (keyActive()) {
-      var dist = Ops.distanceMap(img, S.key.colors);
-      var region;
-      if (isProxy || S.key.mode === 'global') {
-        region = Ops.computeRegion(dist, w, h, S.key);
-        if (isProxy) cache.region = region;
-      } else {
-        var P = S.src.proxy;
-        var pr = cache.region || Ops.computeRegion(Ops.distanceMap(P, S.key.colors), P.width, P.height, S.key);
-        region = Ops.upscaleRegion(pr, P.width, P.height, w, h);
-      }
-      alpha = Ops.alphaFromDist(dist, region, S.key.tolerance, S.key.softness);
-      alpha = Ops.refineAlpha(alpha, w, h, S.key.choke * s, S.key.feather * s);
-    }
-    return alpha;
+  function pipeState() {
+    return { adjust: S.adjust, key: S.key, strokes: S.strokes, crop: S.crop, fullW: S.src.full.width, fullH: S.src.full.height };
   }
 
-  function finalize(colorImg, baseAlpha) {
-    var w = colorImg.width, h = colorImg.height;
-    var alpha = baseAlpha;
-    if (S.strokes.length) {
-      if (!alpha) { alpha = new Uint8Array(w * h); alpha.fill(255); }
-      alpha = Ops.applyStrokes(alpha, w, h, S.strokes);
-    }
-    var keyRgb = keyActive() ? S.key.colors.map(function (c) { return Ops.adjustColor(c, S.adjust); }) : null;
-    return Ops.compose(colorImg, alpha, keyRgb, S.key.defringe);
+  /** Alfakart i full opploesning, med omraadet fra forhaandsvisningen. */
+  function buildAlpha(img) {
+    return Pipeline.alphaFor(img, S, { proxy: S.src.proxy, proxyRegion: cache.pv && cache.pv.region }).alpha;
   }
+
+  function finalize(colorImg, baseAlpha) { return Pipeline.finalize(colorImg, baseAlpha, S); }
 
   var rafPending = false;
   function render() {
@@ -415,38 +395,11 @@
 
   function renderNow() {
     if (!S.src) return;
-    var P = S.src.proxy;
-    var ctx = $('view').getContext('2d');
-    if (S.compare) { ctx.clearRect(0, 0, P.width, P.height); ctx.putImageData(P, 0, 0); return; }
-
-    var ak = JSON.stringify(S.adjust);
-    if (cache.adjKey !== ak) { cache.adjusted = Ops.adjust(P, S.adjust, scaleOf(P)); cache.adjKey = ak; }
-    var kk = keyActive() ? keyParamsKey() : 'off';
-    if (cache.maskKey !== kk) { cache.region = null; cache.alpha = buildAlpha(P, true); cache.maskKey = kk; }
-    var out = finalize(cache.adjusted, cache.alpha);
-    cache.preview = out;
-    ctx.clearRect(0, 0, P.width, P.height);
-    ctx.putImageData(out, 0, 0);
-    drawCropOverlay(ctx, P);
+    if (!cache.pv) cache.pv = new Pipeline.Previewer(S.src.proxy);
+    cache.pv.draw($('view').getContext('2d'), pipeState(), S.compare);
+    if (!S.compare) cache.preview = cache.pv.last;
     updateInfo();
-  }
-
-  /** Demper omraadet som er beskaaret bort i PowerPoint. */
-  function drawCropOverlay(ctx, P) {
-    var F = S.src.full, c = S.crop;
-    if (!c || (!c.x && !c.y && c.w === F.width && c.h === F.height)) return;
-    var k = P.width / F.width;
-    var x0 = c.x * k, y0 = c.y * k, x1 = (c.x + c.w) * k, y1 = (c.y + c.h) * k;
-    ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(0, 0, P.width, y0);
-    ctx.fillRect(0, y1, P.width, P.height - y1);
-    ctx.fillRect(0, y0, x0, y1 - y0);
-    ctx.fillRect(x1, y0, P.width - x1, y1 - y0);
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-    ctx.setLineDash([4, 3]);
-    ctx.strokeRect(x0 + 0.5, y0 + 0.5, x1 - x0 - 1, y1 - y0 - 1);
-    ctx.restore();
+    Popout.push();
   }
 
   function trimRectFor(img) {
@@ -460,7 +413,7 @@
   function renderFull() {
     var F = S.src.full;
     var adjusted = Ops.adjust(F, S.adjust, scaleOf(F));
-    var alpha = buildAlpha(F, false);
+    var alpha = buildAlpha(F);
     var out = finalize(adjusted, alpha);
     var c = S.crop || { x: 0, y: 0, w: F.width, h: F.height };
     if (c.x || c.y || c.w !== F.width || c.h !== F.height) out = Ops.crop(out, c);
@@ -719,7 +672,10 @@
     $('btnUndo').disabled = !S.src || (!hist.past.length && !dirty);
     $('btnRedo').disabled = !S.src || !hist.future.length;
     $('btnResetAll').disabled = !S.src;
+    var flags = $('btnUndo').disabled + ',' + $('btnRedo').disabled;
+    if (flags !== lastHistFlags) { lastHistFlags = flags; Popout.push(); }
   }
+  var lastHistFlags = '';
 
   /* ---------------- Skjul forhaandsvisning ---------------- */
 
@@ -731,6 +687,7 @@
     $('stage').hidden = !hasImg || previewHidden;
     document.querySelector('.seg').hidden = previewHidden;
     $('btnCompare').hidden = previewHidden;
+    $('brushBar').hidden = !hasImg || previewHidden || (S.tool !== 'erase' && S.tool !== 'restore');
     $('bgSelect').hidden = previewHidden;
     $('previewHint').hidden = !hasImg || !previewHidden;
     setIcon($('btnTogglePreview'), previewHidden ? 'eye' : 'eyeOff');
@@ -837,9 +794,10 @@
         var v = +input.value;
         if (isAdj) S.adjust[key] = v;
         else if (key === 'brush') S.brush = v;
+        else if (key === 'hardness') S.hardness = v;
         else S.key[key] = v;
         show();
-        if (key === 'brush') updateCursorSize(); else render();
+        if (key === 'brush' || key === 'hardness') { updateCursorSize(); Popout.push(); } else render();
       };
       input.addEventListener('input', apply);
       input.addEventListener('dblclick', function () { input.value = def; apply(); });
@@ -864,6 +822,7 @@
     ['tolerance', 'softness', 'choke', 'feather'].forEach(function (k) { setSlider(k, S.key[k]); });
     Object.keys(Ops.DEFAULT_ADJUST).forEach(function (k) { setSlider(k, S.adjust[k]); });
     setSlider('brush', S.brush);
+    setSlider('hardness', S.hardness);
     renderChips();
   }
 
@@ -910,6 +869,8 @@
     st.classList.toggle('tool-erase', t === 'erase');
     st.classList.toggle('tool-restore', t === 'restore');
     $('brushCursor').hidden = true;
+    $('brushBar').hidden = !S.src || previewHidden || (t !== 'erase' && t !== 'restore');
+    Popout.push();
   }
 
   function updateCursorSize() {
@@ -918,6 +879,8 @@
     var rect = v.getBoundingClientRect();
     var d = S.brush / 1000 * Math.max(rect.width, rect.height) * 2;
     c.style.width = d + 'px'; c.style.height = d + 'px';
+    var inner = c.firstElementChild || c.appendChild(document.createElement('i'));
+    inner.style.width = inner.style.height = Math.max(2, S.hardness) + '%';
   }
 
   function eventPos(e) {
@@ -946,7 +909,7 @@
       var pos = eventPos(e);
       if (S.tool === 'pick') { pickAt(pos, e.shiftKey || e.ctrlKey || e.metaKey); return; }
       view.setPointerCapture(e.pointerId);
-      drawing = { mode: S.tool, r: S.brush / 1000, pts: [{ x: pos.x, y: pos.y }] };
+      drawing = { mode: S.tool, r: S.brush / 1000, h: S.hardness / 100, pts: [{ x: pos.x, y: pos.y }] };
       live_.drawing = true;
       S.strokes.push(drawing);
       render();
@@ -1048,66 +1011,117 @@
     window.addEventListener('resize', updateCursorSize);
   }
 
+  /* ---------------- Stort forhaandsvisningsvindu ---------------- */
+
+  // Aapnes som et Office-dialogvindu (preview.html). Panelet eier tilstanden:
+  // vinduet faar bildet og innstillingene, og sender klikk, penselstroek og
+  // angring tilbake hit. Lange meldinger deles opp i biter.
+  var Popout = (function () {
+    var dlg = null, ready = false, sentFor = null, timer = null, inbox = {};
+    var CHUNK = 30000;
+
+    function supported() {
+      try { return !!(Office.context.ui && Office.context.ui.displayDialogAsync) && Office.context.requirements.isSetSupported('DialogApi', '1.2'); }
+      catch (e) { return false; }
+    }
+
+    function send(obj) {
+      if (!dlg) return;
+      var str = JSON.stringify(obj);
+      try {
+        if (str.length <= CHUNK) { dlg.messageChild(str); return; }
+        var id = Math.random().toString(36).slice(2), n = Math.ceil(str.length / CHUNK);
+        for (var i = 0; i < n; i++) dlg.messageChild(JSON.stringify({ t: 'chunk', id: id, i: i, n: n, d: str.slice(i * CHUNK, (i + 1) * CHUNK) }));
+      } catch (e) { /* vinduet er lukket */ }
+    }
+
+    function receive(raw) {
+      var m;
+      try { m = JSON.parse(raw); } catch (e) { return; }
+      if (m.t === 'chunk') {
+        var b = inbox[m.id] = inbox[m.id] || { n: m.n, got: 0, parts: [] };
+        if (b.parts[m.i] == null) { b.parts[m.i] = m.d; b.got++; }
+        if (b.got < b.n) return;
+        delete inbox[m.id];
+        try { m = JSON.parse(b.parts.join('')); } catch (e) { return; }
+      }
+      handle(m);
+    }
+
+    function imageMessage() {
+      var F = S.src.full, f = Math.min(1, 1600 / Math.max(F.width, F.height));
+      var c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(F.width * f)); c.height = Math.max(1, Math.round(F.height * f));
+      var x = c.getContext('2d');
+      x.imageSmoothingQuality = 'high';
+      x.drawImage(toCanvas(F), 0, 0, c.width, c.height);
+      var url = c.toDataURL('image/webp', 0.95);
+      if (url.indexOf('data:image/webp') !== 0) url = c.toDataURL('image/png');
+      return { t: 'image', url: url };
+    }
+
+    function stateMessage() {
+      return {
+        t: 'state', s: pipeState(), tool: S.tool, brush: S.brush, hardness: S.hardness,
+        canUndo: !$('btnUndo').disabled, canRedo: !$('btnRedo').disabled, live: $('liveState').textContent
+      };
+    }
+
+    function push() {
+      if (!dlg || !ready || !S.src) return;
+      if (sentFor !== S.src) { sentFor = S.src; send(imageMessage()); }
+      if (timer) return;
+      timer = setTimeout(function () { timer = null; if (dlg && ready && S.src) send(stateMessage()); }, 40);
+    }
+
+    function handle(m) {
+      switch (m.t) {
+        case 'ready': ready = true; sentFor = null; push(); break;
+        case 'pick': if (S.src) pickAt({ x: m.x, y: m.y }, m.add); break;
+        case 'stroke': if (S.src) { S.strokes.push(m.stroke); render(); setTimeout(commitNow, 0); } break;
+        case 'tool': setTool(m.tool); break;
+        case 'brush': S.brush = m.v; setSlider('brush', m.v); updateCursorSize(); push(); break;
+        case 'hardness': S.hardness = m.v; setSlider('hardness', m.v); updateCursorSize(); push(); break;
+        case 'undo': undo(); push(); break;
+        case 'redo': redo(); push(); break;
+        case 'close': close(); break;
+      }
+    }
+
+    function updateButton() {
+      var b = $('btnPopout');
+      b.classList.toggle('on', !!dlg);
+      b.dataset.tip = dlg ? 'Close the large preview window' : 'Open a large preview window';
+    }
+
+    function open() {
+      if (dlg) { close(); return; }
+      if (!supported()) { status('This version of PowerPoint cannot open a separate preview window.', 'err'); return; }
+      var url = location.href.split('#')[0].replace(/taskpane\.html.*$/, 'preview.html');
+      Office.context.ui.displayDialogAsync(url, { height: 85, width: 80, displayInIframe: false }, function (res) {
+        if (res.status !== Office.AsyncResultStatus.Succeeded) {
+          status('Could not open the preview window' + (res.error ? ': ' + res.error.message : '.'), 'err');
+          return;
+        }
+        dlg = res.value; ready = false;
+        dlg.addEventHandler(Office.EventType.DialogMessageReceived, function (a) { receive(a.message); });
+        dlg.addEventHandler(Office.EventType.DialogEventReceived, function () { dlg = null; ready = false; updateButton(); });
+        updateButton();
+      });
+    }
+
+    function close() {
+      if (!dlg) return;
+      try { dlg.close(); } catch (e) { /* allerede lukket */ }
+      dlg = null; ready = false; updateButton();
+    }
+
+    return { open: open, close: close, push: push, supported: supported, isOpen: function () { return !!dlg; } };
+  })();
+
   /* ---------------- Ikoner og verktoeytips ---------------- */
 
-  var ICONS = {
-    undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
-    redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
-    refresh: '<path d="M20 11a8 8 0 1 0-2.3 6.2"/><path d="M20 4v7h-7"/>',
-    folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
-    reset: '<path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v5h5"/>',
-    pipette: '<path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4z"/>',
-    eraser: '<path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L11 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/>',
-    brush: '<path d="m9.1 11.9 8-8.1a2.9 2.9 0 1 1 4.1 4.1l-8.1 8"/><path d="M7.1 14.9c-1.7 0-3 1.4-3 3 0 1.3-2.5 1.5-2 2 1.1 1.1 2.5 2 4 2 2.2 0 4-1.8 4-4a3 3 0 0 0-3-3z"/>',
-    eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
-    eyeOff: '<path d="m3 3 18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2"/><path d="M6.6 6.6C3.9 8.3 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
-    wand: '<path d="m15 4 1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/><path d="M3 21 14 10"/><path d="m19 13 .5 1 1 .5-1 .5-.5 1-.5-1-1-.5 1-.5z"/>',
-    trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m6 6 1 14h10l1-14"/>',
-    download: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>'
-  };
-
-  function setIcon(el, name) {
-    var old = el.querySelector('svg.ic');
-    if (old) old.remove();
-    el.insertAdjacentHTML('afterbegin', '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + ICONS[name] + '</svg>');
-  }
-
-  function initIcons() {
-    document.querySelectorAll('[data-icon]').forEach(function (el) {
-      setIcon(el, el.dataset.icon);
-      if (el.dataset.tip && !el.getAttribute('aria-label')) el.setAttribute('aria-label', el.dataset.tip);
-    });
-  }
-
-  /** Egne verktoeytips: vises med en gang og holdes innenfor panelet. */
-  function initTooltips() {
-    var tip = $('tip'), current = null, timer = null;
-    function hide() { clearTimeout(timer); tip.hidden = true; current = null; }
-    function show(el) {
-      tip.textContent = el.dataset.tip;
-      tip.hidden = false;
-      var r = el.getBoundingClientRect(), t = tip.getBoundingClientRect();
-      var left = Math.min(window.innerWidth - t.width - 6, Math.max(6, r.left + r.width / 2 - t.width / 2));
-      var top = r.bottom + 6;
-      if (top + t.height > window.innerHeight - 4) top = r.top - t.height - 6;
-      tip.style.left = left + 'px'; tip.style.top = top + 'px';
-    }
-    document.addEventListener('mouseover', function (e) {
-      var el = e.target.closest && e.target.closest('[data-tip]');
-      if (el === current) return;
-      hide();
-      if (!el) return;
-      current = el;
-      timer = setTimeout(function () { if (current === el) show(el); }, 350);
-    });
-    document.addEventListener('focusin', function (e) {
-      var el = e.target.closest && e.target.closest('[data-tip]');
-      if (el && e.target.matches(':focus-visible')) { current = el; show(el); }
-    });
-    document.addEventListener('focusout', hide);
-    document.addEventListener('pointerdown', hide);
-    window.addEventListener('scroll', hide, true);
-  }
+  var setIcon = UI.setIcon, initIcons = UI.initIcons, initTooltips = UI.initTooltips;
 
   async function start() {
     initIcons();
@@ -1117,6 +1131,7 @@
     bindStage();
     bindHistory();
     bindPreviewToggle();
+    $('btnPopout').addEventListener('click', function () { Popout.open(); });
     var inPPT = await Bridge.init();
     if (!inPPT) {
       $('btnGet').hidden = true;
@@ -1129,6 +1144,7 @@
     $('emptyTitle').textContent = 'Select a picture on the slide.';
     $('emptyText').textContent = 'It opens here automatically. You can also drop an image here or paste one with Ctrl+V.';
     Bridge.onSelectionChanged(onSelectionChanged);
+    $('btnPopout').hidden = !Popout.supported();
     $('liveWrap').hidden = false;
     live_.on = $('live').checked;
     $('live').addEventListener('change', function (e) { live_.on = e.target.checked; syncLiveUI(); if (!live_.on) setLiveState(''); });

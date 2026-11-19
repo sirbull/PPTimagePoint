@@ -9,6 +9,8 @@
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="js/imageops.js"></script>
+  <script src="js/pipeline.js"></script>
+  <script src="js/ui.js"></script>
   <script src="js/pptx-extract.js"></script>
   <script src="js/office-bridge.js"></script>
 </head>
@@ -48,12 +50,18 @@
         <button type="button" data-tool="restore" class="icon" data-icon="brush" data-tip="Restore: paint back parts of the subject"></button>
       </div>
       <button type="button" id="btnCompare" class="icon" data-icon="eye" data-tip="Hold to show the original"></button>
+      <button type="button" id="btnPopout" class="icon" data-icon="popout" data-tip="Open a large preview window" hidden></button>
       <select id="bgSelect" data-tip="Preview background">
         <option value="checker">Checkerboard</option>
         <option value="white">White</option>
         <option value="black">Black</option>
         <option value="slide">Gray</option>
       </select>
+    </div>
+    <div id="brushBar" class="brush-bar" hidden>
+      <div class="slider" data-key="brush" data-min="1" data-max="150" data-step="1" data-def="30" data-label="Brush size"></div>
+      <div class="slider" data-key="hardness" data-min="0" data-max="100" data-step="1" data-def="65" data-label="Hardness" data-track="hard"></div>
+      <button type="button" id="btnClearStrokes" class="icon small" data-icon="trash" data-tip="Remove all brush strokes"></button>
     </div>
     <p id="previewHint" class="hint" hidden>Preview is hidden. Check the result on the slide (Live update), and use "Auto detect background" or show the preview to pick colors and use the brush.</p>
     <div id="infoRow" class="info-row" hidden>
@@ -85,12 +93,6 @@
         <div class="slider" data-key="feather" data-min="0" data-max="10" data-step="0.5" data-def="1" data-label="Feather"></div>
         <label class="check"><input type="checkbox" id="defringe" checked> Despill (remove color fringe)</label>
         <label class="check"><input type="checkbox" id="trim"> Trim transparent edges</label>
-        <div class="sub">
-          <div class="slider" data-key="brush" data-min="1" data-max="150" data-step="1" data-def="30" data-label="Brush size"></div>
-          <div class="row">
-            <button type="button" id="btnClearStrokes" data-icon="trash" data-tip="Remove all brush strokes">Clear strokes</button>
-          </div>
-        </div>
       </div>
     </details>
 

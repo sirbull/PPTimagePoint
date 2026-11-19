@@ -301,7 +301,9 @@
     for (var s = 0; s < strokes.length; s++) {
       var st = strokes[s];
       var R = Math.max(1, st.r * longSide);
-      var inner = R * 0.65;
+      // Hardhet 0..1: andel av radiusen som er helt dekket. Resten toner mykt ut.
+      var hard = st.h == null ? 0.65 : clamp(st.h, 0, 1);
+      var inner = R * hard;
       var pts = densify(st.pts, w, h, Math.max(1, R * 0.25));
       var minX = w, minY = h, maxX = -1, maxY = -1;
       for (var p = 0; p < pts.length; p++) {
@@ -316,7 +318,8 @@
             var dx = x - cx;
             var dd = Math.sqrt(dx * dx + dy * dy);
             if (dd > R) continue;
-            var t = dd <= inner ? 1 : 1 - (dd - inner) / (R - inner);
+            var t = dd <= inner ? 1 : 1 - (dd - inner) / Math.max(0.5, R - inner);
+            if (t < 1) t = t * t * (3 - 2 * t);
             var v = Math.round(t * 255);
             var id = y * w + x;
             if (v > cover[id]) cover[id] = v;

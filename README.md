@@ -21,7 +21,8 @@ Alt skjer lokalt i PowerPoint. Ingen bilder sendes til noen server.
    * **Keying mode**: «Contiguous background» fjerner bare bakgrunn som henger sammen med det du klikket på eller med bildekantene, slik at like farger inne i motivet beholdes. «Color everywhere in the image» fjerner fargen i hele bildet (nyttig for hull, f.eks. mellom armen og kroppen).
    * **Choke / expand edge** og **Feather** rydder i kanten.
    * **Despill** fjerner f.eks. grønt skjær fra greenscreen.
-   * **Erase / Restore** er pensler for å rette opp det fargenøkkelen ikke klarer alene.
+   * **Erase / Restore** er pensler for å rette opp det fargenøkkelen ikke klarer alene. **Brush size** og **Hardness** vises når en pensel er valgt. Lav hardhet gir myk pensel.
+   * Knappen med pil ut av en boks åpner forhåndsvisningen i et **stort eget vindu**, der det er lettere å tegne. Alt du gjør der, skjer i panelet og på lysbildet.
    * Hold inne øyeknappen for å sammenligne med originalen.
    * **Reset** øverst til høyre legger originalbildet tilbake på lysbildet, på opprinnelig plass, og nullstiller alt.
    * Alle knapper har forklaring når du holder musepekeren over dem.
@@ -102,7 +103,11 @@ Last så inn `manifest.local.xml` i stedet for `manifest.xml`. Endres adressen, 
 | `src/js/imageops.js` | Bildemotoren: fargenøkkel (Lab-avstand, flomfyll, kantbehandling), fargejusteringer, Lanczos-skalering |
 | `src/js/pptx-extract.js` | Henter originalbildet ut av lysbildet (eksportert som .pptx) |
 | `src/js/office-bridge.js` | All kontakt med PowerPoint |
+| `src/js/pipeline.js` | Felles behandlingskjede for forhåndsvisning og full oppløsning |
+| `src/js/preview.js`, `src/preview.html` | Det store forhåndsvisningsvinduet |
+| `src/js/ui.js` | Ikoner og verktøytips |
 | `src/js/app.js` | Panelet og arbeidsflyten |
+| `scripts/make-icons.py` | Tegner ikonene |
 | `manifest.template.xml` | Mal for manifestene |
 
 ### Krav og begrensninger

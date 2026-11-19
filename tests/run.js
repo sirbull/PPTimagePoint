@@ -25,6 +25,21 @@ let failures = 0;
 function check(cond, msg) { console.log((cond ? '  ok   ' : '  FEIL ') + msg); if (!cond) failures++; }
 
 const officeMock = (pptxB64) => {
+  if (window !== window.top) {
+    // Inne i dialogvinduet: meldinger til og fra panelet
+    window.Office = {
+      EventType: { DialogParentMessageReceived: 'pm' },
+      onReady(cb) { setTimeout(() => cb({ host: 'PowerPoint' }), 0); },
+      context: {
+        requirements: { isSetSupported: () => true },
+        ui: {
+          messageParent(m) { window.top.__fromDialog(m); },
+          addHandlerAsync(t, h, cb) { window.__onParentMsg = h; cb && cb({ status: 'succeeded' }); },
+        },
+      },
+    };
+    return;
+  }
   // Med __persistMock overlever "presentasjonen" at panelet lastes paa nytt
   const saved = window.__persistMock && sessionStorage.getItem('mockState');
   const st = saved ? JSON.parse(saved) : null;
@@ -99,10 +114,29 @@ const officeMock = (pptxB64) => {
   window.PowerPoint = { run: (fn) => fn(ctx) };
   window.Office = {
     HostType: { PowerPoint: 'PowerPoint' }, CoercionType: { Image: 'image' },
-    AsyncResultStatus: { Succeeded: 'succeeded', Failed: 'failed' }, EventType: { DocumentSelectionChanged: 'sel' },
+    AsyncResultStatus: { Succeeded: 'succeeded', Failed: 'failed' },
+    EventType: { DocumentSelectionChanged: 'sel', DialogMessageReceived: 'dm', DialogEventReceived: 'de' },
     onReady(cb) { setTimeout(() => cb({ host: 'PowerPoint' }), 10); },
     context: {
       requirements: { isSetSupported: () => true },
+      ui: {
+        displayDialogAsync(url, opts, cb) {
+          const f = document.createElement('iframe');
+          f.id = 'dlg';
+          f.style.cssText = 'position:fixed;left:0;top:0;width:100%;height:100%;border:0;background:#fff;z-index:99';
+          const handlers = {};
+          window.__fromDialog = (m) => handlers.dm && handlers.dm({ message: m });
+          const dialog = {
+            messageChild(m) { f.contentWindow.__onParentMsg && f.contentWindow.__onParentMsg({ message: m }); },
+            addEventHandler(t, h) { handlers[t] = h; },
+            close() { f.remove(); },
+          };
+          f.src = url;
+          document.body.appendChild(f);
+          window.__dialogOpts = opts;
+          cb({ status: 'succeeded', value: dialog });
+        },
+      },
       document: {
         addHandlerAsync(t, cb) { window.__selHandler = cb; },
         getSelectedDataAsync(t, cb) { cb({ status: 'failed' }); },
@@ -521,6 +555,63 @@ async function decodeB64Png(page, b64) {
     check(last.opts.imageLeft === 36 && last.opts.imageWidth === 144, 'Reset legger originalen på opprinnelig plass');
     check(await page.evaluate((o) => window.__shapes.find((x) => x.data === o) !== undefined, orig) && sh.length === 2, 'originalfilen ligger på lysbildet, og den redigerte er borte ' + sh);
     check(/back to the original/.test(await page.locator('#status').textContent()), 'melding om at originalen er tilbake');
+    check(errors.length === 0, 'ingen JS-feil ' + errors.join(' | '));
+    await page.close();
+  }
+
+  /* ---- 10. Stort forhaandsvisningsvindu og myk pensel ---- */
+  console.log('Test 10: stort forhåndsvisningsvindu og myk pensel');
+  {
+    const page = await browser.newPage({ viewport: { width: 1100, height: 760 } });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.route('**/appsforoffice.microsoft.com/**', (r) => r.fulfill({ body: '', contentType: 'text/javascript' }));
+    await page.addInitScript(officeMock, pptxB64);
+    await page.goto(base + '/src/taskpane.html');
+    await page.waitForSelector('#stage:not([hidden])');
+    await page.uncheck('#live');
+    check(await page.isVisible('#btnPopout'), 'knappen for stort vindu vises');
+    await page.click('#btnPopout');
+    const frame = page.frameLocator('#dlg');
+    await frame.locator('#pvView:not([hidden])').waitFor({ timeout: 10000 });
+    const size = await frame.locator('#pvView').evaluate((c) => [c.width, c.height]);
+    check(size[0] === 800 && size[1] === 1000, 'vinduet får bildet i høyere oppløsning (' + size + ')');
+    // klikk paa bakgrunnen i vinduet
+    const vb = await frame.locator('#pvView').boundingBox();
+    await page.mouse.click(vb.x + 6, vb.y + 6);
+    await page.waitForFunction(() => window.__pip.S.key.enabled);
+    check(true, 'pipetten i vinduet fjerner bakgrunnen i panelet');
+    // myk pensel i vinduet
+    await frame.locator('[data-tool="erase"]').click();
+    check(await page.evaluate(() => window.__pip.S.tool === 'erase') && await page.isVisible('#brushBar'), 'verktøyvalg følger med til panelet, pensellinjen vises');
+    await frame.locator('#pvHard').evaluate((i) => { i.value = 0; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change')); });
+    await frame.locator('#pvSize').evaluate((i) => { i.value = 80; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change')); });
+    await page.waitForFunction(() => window.__pip.S.hardness === 0 && window.__pip.S.brush === 80);
+    check(await page.evaluate(() => document.getElementById('sl-hardness').value === '0'), 'hardhet og størrelse synkroniseres');
+    await page.mouse.move(vb.x + vb.width * 0.5, vb.y + vb.height * 0.3);
+    await page.mouse.down();
+    await page.mouse.move(vb.x + vb.width * 0.5, vb.y + vb.height * 0.7, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForFunction(() => window.__pip.S.strokes.length === 1);
+    const st = await page.evaluate(() => window.__pip.S.strokes[0]);
+    check(st.h === 0 && st.mode === 'erase' && Math.abs(st.r - 0.08) < 1e-9, 'penselstrøk fra vinduet med myk kant ' + JSON.stringify({ h: st.h, r: st.r }));
+    // myk kant: alfa avtar gradvis fra midten av stroeket
+    const prof = await page.evaluate(() => {
+      const r = window.__pip.renderFull(); const d = r.image.data, w = r.image.width, y = Math.round(r.image.height * 0.5);
+      const cx = Math.round(w * 0.5), R = 0.08 * Math.max(w, r.image.height);
+      return [0, 0.25, 0.5, 0.75, 0.95].map((f) => d[(y * w + Math.round(cx + f * R)) * 4 + 3]);
+    });
+    check(prof[0] === 0 && prof[1] > 0 && prof[1] < prof[2] && prof[2] < prof[3] && prof[3] < prof[4], 'myk pensel gir gradvis overgang ' + prof);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(SHOTS, 'popout.png') });
+    // angre fra vinduet
+    await frame.locator('#pvView').click({ position: { x: 5, y: 5 }, trial: true });
+    await frame.locator('#pvUndo').click();
+    await page.waitForFunction(() => window.__pip.S.strokes.length === 0);
+    check(true, 'angring fra vinduet virker');
+    await frame.locator('#pvClose').click();
+    await page.waitForTimeout(200);
+    check(await page.locator('#dlg').count() === 0, 'vinduet kan lukkes');
     check(errors.length === 0, 'ingen JS-feil ' + errors.join(' | '));
     await page.close();
   }

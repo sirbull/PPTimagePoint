@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PPTimagePoint preview</title>
+  <link rel="stylesheet" href="taskpane.css">
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <script src="js/imageops.js"></script>
+  <script src="js/pipeline.js"></script>
+  <script src="js/ui.js"></script>
+</head>
+<body class="pv-body">
+  <header class="pv-bar">
+    <div class="seg" role="group" aria-label="Tools">
+      <button type="button" data-tool="pick" class="icon on" data-icon="pipette" data-tip="Pick background color: click the background. Shift+click adds more colors."></button>
+      <button type="button" data-tool="erase" class="icon" data-icon="eraser" data-tip="Erase: paint areas that should become transparent"></button>
+      <button type="button" data-tool="restore" class="icon" data-icon="brush" data-tip="Restore: paint back parts of the subject"></button>
+    </div>
+    <div id="pvBrush" class="pv-brush" hidden>
+      <label>Size <input type="range" id="pvSize" min="1" max="150" step="1" value="30"><output id="pvSizeOut">30</output></label>
+      <label>Hardness <input type="range" id="pvHard" min="0" max="100" step="1" value="65"><output id="pvHardOut">65</output></label>
+    </div>
+    <span class="spacer"></span>
+    <button type="button" id="pvCompare" class="icon" data-icon="eye" data-tip="Hold to show the original"></button>
+    <select id="pvBg" data-tip="Preview background">
+      <option value="checker">Checkerboard</option>
+      <option value="white">White</option>
+      <option value="black">Black</option>
+      <option value="slide">Gray</option>
+    </select>
+    <span class="sep"></span>
+    <button type="button" id="pvUndo" class="icon" data-icon="undo" data-tip="Undo (Ctrl+Z)" disabled></button>
+    <button type="button" id="pvRedo" class="icon" data-icon="redo" data-tip="Redo (Ctrl+Y)" disabled></button>
+    <button type="button" id="pvClose" class="icon" data-icon="close" data-tip="Close the preview window"></button>
+  </header>
+  <main id="pvStage" class="pv-stage checker">
+    <p id="pvWait" class="muted">Loading preview ...</p>
+    <canvas id="pvView" hidden></canvas>
+    <div id="pvCursor" class="brush-cursor" hidden><i></i></div>
+  </main>
+  <footer class="pv-foot muted"><span id="pvHint">Click the background to remove it.</span><span id="pvLive"></span></footer>
+  <div id="tip" class="tip" role="tooltip" hidden></div>
+  <script src="js/preview.js"></script>
+</body>
+</html>
