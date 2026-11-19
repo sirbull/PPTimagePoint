@@ -10,7 +10,7 @@
 
   var S = {
     src: null, // { full, proxy, name, mime, meta }
-    adjust: Object.assign({}, Ops.DEFAULT_ADJUST),
+    adjust: Ops.defaultAdjust(),
     key: { enabled: false, colors: [], seeds: [], tolerance: 18, softness: 10, mode: 'connected', fromEdges: true, choke: 1, feather: 1, defringe: true },
     strokes: [],
     trim: false,
@@ -115,7 +115,7 @@
       origCrop: c, sessionId: newSessionId() };
     S.strokes = [];
     S.key.colors = []; S.key.seeds = []; S.key.enabled = false;
-    S.adjust = Object.assign({}, Ops.DEFAULT_ADJUST);
+    S.adjust = Ops.defaultAdjust();
     S.trim = false;
     S.out = { w: full.width, h: full.height, lock: true };
     // Beskjaering fra PowerPoint (i pikselkoordinater) og hva som sist ble lagt paa lysbildet
@@ -575,7 +575,7 @@
   async function resetToOriginal() {
     if (!S.src || live_.running) return;
     var F = S.src.full;
-    S.adjust = Object.assign({}, Ops.DEFAULT_ADJUST);
+    S.adjust = Ops.defaultAdjust();
     S.key.colors = []; S.key.seeds = []; S.key.enabled = false;
     S.strokes = []; S.trim = false;
     S.out = { w: F.width, h: F.height, lock: true };
@@ -793,6 +793,8 @@
       var apply = function () {
         var v = +input.value;
         if (isAdj) S.adjust[key] = v;
+        else if (el.classList.contains('mix')) setMixerValue(key, v);
+        else if (el.classList.contains('lvl')) setLevelsValue(key, v);
         else if (key === 'brush') S.brush = v;
         else if (key === 'hardness') S.hardness = v;
         else S.key[key] = v;
@@ -804,6 +806,237 @@
       sliders[key] = { input: input, show: show, def: def };
       show();
     });
+  }
+
+  /* ---------------- Color mixer, Levels og Curves ---------------- */
+
+  var mixSel = 0;           // valgt fargeomraade i Color mixer
+  var curveChan = 'rgb';    // valgt kanal i Curves
+  var MIX_PART = { mixH: 0, mixS: 1, mixL: 2 };
+  var LV_FIELD = { lvInBlack: 'inBlack', lvGamma: 'gamma', lvInWhite: 'inWhite', lvOutBlack: 'outBlack', lvOutWhite: 'outWhite' };
+
+  function adjustExtras() {
+    var d = Ops.defaultAdjust();
+    if (!S.adjust.mixer) S.adjust.mixer = d.mixer;
+    if (!S.adjust.levels) S.adjust.levels = d.levels;
+    if (!S.adjust.curves) S.adjust.curves = d.curves;
+  }
+
+  function setMixerValue(key, v) {
+    adjustExtras();
+    var m = S.adjust.mixer.slice();
+    m[mixSel * 3 + MIX_PART[key]] = v;
+    S.adjust.mixer = m;
+    renderSwatches();
+  }
+
+  function setLevelsValue(key, v) {
+    adjustExtras();
+    var l = Object.assign({}, S.adjust.levels);
+    l[LV_FIELD[key]] = v;
+    // hold svart under hvitt
+    if (l.inWhite <= l.inBlack) { if (key === 'lvInBlack') l.inWhite = Math.min(255, l.inBlack + 1); else l.inBlack = Math.max(0, l.inWhite - 1); }
+    S.adjust.levels = l;
+    setSlider('lvInBlack', l.inBlack); setSlider('lvInWhite', l.inWhite);
+    drawHistogram();
+  }
+
+  function hsl(h, s, l) { return 'hsl(' + h + ',' + s + '%,' + l + '%)'; }
+
+  function renderSwatches() {
+    var box = $('mixSwatches');
+    if (!box.childElementCount) {
+      Ops.MIX_COLORS.forEach(function (c, i) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'swatch'; b.setAttribute('role', 'radio');
+        b.style.setProperty('--sw', hsl(c.h, 85, 52));
+        b.dataset.tip = c.name; b.setAttribute('aria-label', c.name);
+        b.addEventListener('click', function () { mixSel = i; syncAdvancedUI(); });
+        box.appendChild(b);
+      });
+    }
+    var m = S.adjust.mixer || [];
+    Array.prototype.forEach.call(box.children, function (b, i) {
+      b.classList.toggle('on', i === mixSel);
+      b.setAttribute('aria-checked', String(i === mixSel));
+      b.classList.toggle('changed', !!(m[i * 3] || m[i * 3 + 1] || m[i * 3 + 2]));
+    });
+  }
+
+  function syncAdvancedUI() {
+    adjustExtras();
+    var m = S.adjust.mixer, c = Ops.MIX_COLORS[mixSel].h;
+    setSlider('mixH', m[mixSel * 3]); setSlider('mixS', m[mixSel * 3 + 1]); setSlider('mixL', m[mixSel * 3 + 2]);
+    // fargede spor for valgt farge
+    var hEl = $('sl-mixH').parentElement, sEl = $('sl-mixS').parentElement, lEl = $('sl-mixL').parentElement;
+    hEl.style.setProperty('--track-bg', 'linear-gradient(90deg,' + hsl(c - 30, 85, 52) + ',' + hsl(c, 85, 52) + ',' + hsl(c + 30, 85, 52) + ')');
+    sEl.style.setProperty('--track-bg', 'linear-gradient(90deg,' + hsl(c, 0, 55) + ',' + hsl(c, 95, 50) + ')');
+    lEl.style.setProperty('--track-bg', 'linear-gradient(90deg,' + hsl(c, 80, 15) + ',' + hsl(c, 85, 50) + ',' + hsl(c, 90, 88) + ')');
+    $('sl-mixH').previousElementSibling.firstElementChild.textContent = Ops.MIX_COLORS[mixSel].name + ' hue';
+    renderSwatches();
+    var l = S.adjust.levels;
+    Object.keys(LV_FIELD).forEach(function (k) { setSlider(k, l[LV_FIELD[k]]); });
+    drawHistogram();
+    drawCurve();
+  }
+
+  /** Histogram for originalbildet (lysstyrke og hver kanal), regnet ut en gang per bilde. */
+  function histogram() {
+    if (!S.src) return null;
+    if (S.src.hist) return S.src.hist;
+    var d = S.src.proxy.data, H = { rgb: new Uint32Array(256), r: new Uint32Array(256), g: new Uint32Array(256), b: new Uint32Array(256) };
+    for (var q = 0; q < d.length; q += 4) {
+      if (d[q + 3] < 16) continue;
+      H.r[d[q]]++; H.g[d[q + 1]]++; H.b[d[q + 2]]++;
+      H.rgb[(d[q] * 54 + d[q + 1] * 183 + d[q + 2] * 19) >> 8]++;
+    }
+    S.src.hist = H;
+    return H;
+  }
+
+  var CHAN_COLOR = { rgb: '#8a8886', r: '#e0453a', g: '#3fae49', b: '#3a7bd5' };
+
+  function drawHist(ctx, W, H, hist, color) {
+    var max = 1;
+    for (var i = 2; i < 254; i++) if (hist[i] > max) max = hist[i];
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    for (i = 0; i < 256; i++) ctx.lineTo(i / 255 * W, H - Math.min(1, hist[i] / max) * H * 0.95);
+    ctx.lineTo(W, H);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawHistogram() {
+    var cv = $('histLevels'), ctx = cv.getContext('2d'), W = cv.width, H = cv.height;
+    ctx.clearRect(0, 0, W, H);
+    var h = histogram();
+    if (!h) return;
+    ctx.globalAlpha = 0.55;
+    drawHist(ctx, W, H, h.rgb, getComputedStyle(document.body).color);
+    ctx.globalAlpha = 1;
+    var l = S.adjust.levels || Ops.defaultAdjust().levels;
+    var mark = function (v, col) {
+      var x = v / 255 * W;
+      ctx.fillStyle = col; ctx.strokeStyle = '#000';
+      ctx.beginPath(); ctx.moveTo(x, H - 16); ctx.lineTo(x - 9, H); ctx.lineTo(x + 9, H); ctx.closePath(); ctx.fill(); ctx.stroke();
+    };
+    var mid = l.inBlack + (l.inWhite - l.inBlack) * Math.pow(0.5, l.gamma);
+    mark(l.inBlack, '#000'); mark(mid, '#888'); mark(l.inWhite, '#fff');
+  }
+
+  function curvePoints() { adjustExtras(); return S.adjust.curves[curveChan]; }
+
+  function drawCurve() {
+    var cv = $('curveCanvas'), ctx = cv.getContext('2d'), W = cv.width, H = cv.height;
+    var dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = dark ? '#1f1f1f' : '#fbfbfb';
+    ctx.fillRect(0, 0, W, H);
+    var h = histogram();
+    if (h) { ctx.globalAlpha = 0.28; drawHist(ctx, W, H, h[curveChan], CHAN_COLOR[curveChan]); ctx.globalAlpha = 1; }
+    ctx.strokeStyle = dark ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.1)';
+    ctx.lineWidth = 2;
+    for (var i = 1; i < 4; i++) {
+      ctx.beginPath(); ctx.moveTo(i * W / 4, 0); ctx.lineTo(i * W / 4, H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i * H / 4); ctx.lineTo(W, i * H / 4); ctx.stroke();
+    }
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath(); ctx.moveTo(0, H); ctx.lineTo(W, 0); ctx.stroke();
+    ctx.setLineDash([]);
+    // de andre kanalene svakt i bakgrunnen
+    adjustExtras();
+    ['r', 'g', 'b', 'rgb'].forEach(function (ch) {
+      if (ch === curveChan) return;
+      var pts = S.adjust.curves[ch];
+      if (pts.length === 2 && pts[0][1] === 0 && pts[1][1] === 255 && pts[0][0] === 0 && pts[1][0] === 255) return;
+      plot(ctx, Ops.curveLUT(pts), CHAN_COLOR[ch], 2, 0.45, W, H);
+    });
+    plot(ctx, Ops.curveLUT(curvePoints()), curveChan === 'rgb' ? (dark ? '#f3f2f1' : '#201f1e') : CHAN_COLOR[curveChan], 4, 1, W, H);
+    curvePoints().forEach(function (p) {
+      ctx.beginPath();
+      ctx.arc(p[0] / 255 * W, H - p[1] / 255 * H, 10, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = CHAN_COLOR[curveChan] === '#8a8886' ? '#201f1e' : CHAN_COLOR[curveChan]; ctx.stroke();
+    });
+  }
+
+  function plot(ctx, lut, color, width, alpha, W, H) {
+    ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = width;
+    ctx.beginPath();
+    for (var x = 0; x < 256; x++) {
+      var px = x / 255 * W, py = H - lut[x] / 255 * H;
+      if (x) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+    }
+    ctx.stroke(); ctx.globalAlpha = 1;
+  }
+
+  function setCurve(pts) {
+    adjustExtras();
+    var c = Object.assign({}, S.adjust.curves);
+    c[curveChan] = pts;
+    S.adjust.curves = c;
+    drawCurve(); render();
+  }
+
+  function bindCurves() {
+    var cv = $('curveCanvas'), drag = -1;
+    var toVal = function (e) {
+      var r = cv.getBoundingClientRect();
+      return { x: (e.clientX - r.left) / r.width * 255, y: (1 - (e.clientY - r.top) / r.height) * 255, out: e.clientY < r.top - 30 || e.clientY > r.bottom + 30 || e.clientX < r.left - 30 || e.clientX > r.right + 30, scale: 255 / r.width };
+    };
+    var nearest = function (v) {
+      var pts = curvePoints(), best = -1, bd = 1e9;
+      pts.forEach(function (p, i) { var d = Math.hypot(p[0] - v.x, p[1] - v.y); if (d < bd) { bd = d; best = i; } });
+      return bd <= 14 * v.scale ? best : -1;
+    };
+    cv.addEventListener('pointerdown', function (e) {
+      if (!S.src) return;
+      e.preventDefault();
+      cv.setPointerCapture(e.pointerId);
+      var v = toVal(e);
+      drag = nearest(v);
+      if (drag < 0) {
+        var pts = curvePoints().map(function (p) { return p.slice(); });
+        var x = Math.round(Math.min(254, Math.max(1, v.x)));
+        if (pts.some(function (p) { return Math.abs(p[0] - x) < 3; })) return;
+        pts.push([x, Math.round(Math.min(255, Math.max(0, v.y)))]);
+        pts.sort(function (a, b) { return a[0] - b[0]; });
+        drag = pts.findIndex(function (p) { return p[0] === x; });
+        setCurve(pts);
+      }
+    });
+    cv.addEventListener('pointermove', function (e) {
+      if (drag < 0) return;
+      var v = toVal(e), pts = curvePoints().map(function (p) { return p.slice(); });
+      var last = pts.length - 1;
+      if (v.out && drag > 0 && drag < last) { pts.splice(drag, 1); drag = -1; setCurve(pts); return; }
+      var lo = drag === 0 ? 0 : pts[drag - 1][0] + 1, hi = drag === last ? 255 : pts[drag + 1][0] - 1;
+      if (drag === 0) hi = Math.min(hi, 254);
+      if (drag === last) lo = Math.max(lo, 1);
+      pts[drag] = [Math.round(Math.min(hi, Math.max(lo, v.x))), Math.round(Math.min(255, Math.max(0, v.y)))];
+      setCurve(pts);
+    });
+    var end = function () { drag = -1; };
+    cv.addEventListener('pointerup', end);
+    cv.addEventListener('pointercancel', end);
+    cv.addEventListener('dblclick', function (e) {
+      var i = nearest(toVal(e)), pts = curvePoints();
+      if (i > 0 && i < pts.length - 1) { pts = pts.slice(); pts.splice(i, 1); setCurve(pts); }
+    });
+    document.querySelectorAll('[data-chan]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        curveChan = b.dataset.chan;
+        document.querySelectorAll('[data-chan]').forEach(function (x) { x.classList.toggle('on', x === b); });
+        drawCurve();
+      });
+    });
+    $('btnResetCurves').addEventListener('click', function () { S.adjust.curves = Ops.defaultAdjust().curves; drawCurve(); render(); });
+    $('btnResetLevels').addEventListener('click', function () { S.adjust.levels = Ops.defaultAdjust().levels; syncAdvancedUI(); render(); });
+    $('btnResetMixer').addEventListener('click', function () { S.adjust.mixer = Ops.defaultAdjust().mixer; syncAdvancedUI(); render(); });
+    // tegn kurven paa nytt naar seksjonen aapnes (stoerrelsen er da kjent)
+    $('secAdvanced').addEventListener('toggle', function () { drawHistogram(); drawCurve(); });
   }
 
   function setSlider(key, v) {
@@ -820,7 +1053,8 @@
     $('defringe').checked = S.key.defringe;
     $('trim').checked = S.trim;
     ['tolerance', 'softness', 'choke', 'feather'].forEach(function (k) { setSlider(k, S.key[k]); });
-    Object.keys(Ops.DEFAULT_ADJUST).forEach(function (k) { setSlider(k, S.adjust[k]); });
+    Ops.NUM_KEYS.forEach(function (k) { setSlider(k, S.adjust[k]); });
+    syncAdvancedUI();
     setSlider('brush', S.brush);
     setSlider('hardness', S.hardness);
     renderChips();
@@ -1002,7 +1236,7 @@
     $('btnClearStrokes').addEventListener('click', function () { S.strokes = []; render(); });
 
     $('btnResetAdjust').addEventListener('click', function () {
-      S.adjust = Object.assign({}, Ops.DEFAULT_ADJUST); syncUI(); render();
+      S.adjust = Ops.defaultAdjust(); syncUI(); render();
     });
 
     $('btnInsert').addEventListener('click', doInsert);
@@ -1131,6 +1365,8 @@
     bindStage();
     bindHistory();
     bindPreviewToggle();
+    bindCurves();
+    syncAdvancedUI();
     $('btnPopout').addEventListener('click', function () { Popout.open(); });
     var inPPT = await Bridge.init();
     if (!inPPT) {

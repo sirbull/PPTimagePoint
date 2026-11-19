@@ -616,6 +616,69 @@ async function decodeB64Png(page, b64) {
     await page.close();
   }
 
+  /* ---- 11. Color mixer, Levels og Curves ---- */
+  console.log('Test 11: Color mixer, Levels og Curves');
+  {
+    const page = await browser.newPage({ viewport: { width: 360, height: 1400 } });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.route('**/appsforoffice.microsoft.com/**', (r) => r.fulfill({ body: '', contentType: 'text/javascript' }));
+    await page.goto(base + '/src/taskpane.html');
+    await page.setInputFiles('#fileInput', path.join(__dirname, 'fixtures/green.jpg'));
+    await page.waitForSelector('#stage:not([hidden])');
+    check(await page.evaluate(() => !document.getElementById('secMixer').open && !document.getElementById('secAdvanced').open), 'Color mixer og Advanced er lukket som standard');
+    const px = (x, y) => page.evaluate(([x, y]) => { const r = window.__pip.renderFull(); const d = r.image.data, w = r.image.width; const i = (y * w + x) * 4; return [d[i], d[i + 1], d[i + 2]]; }, [x, y]);
+    const red0 = await px(800, 300), green0 = await px(100, 100), blue0 = await px(1300, 500);
+    await page.click('#secMixer summary');
+    await page.locator('#mixSwatches .swatch').nth(0).click();
+    await page.evaluate(() => { const i = document.getElementById('sl-mixH'); i.value = 100; i.dispatchEvent(new Event('input')); });
+    const red1 = await px(800, 300), green1 = await px(100, 100), blue1 = await px(1300, 500);
+    check(red1[1] > red0[1] + 40 && red1[0] > 150, 'rødt blir mer oransje ' + red0 + ' -> ' + red1);
+    check(JSON.stringify(green1) === JSON.stringify(green0) && JSON.stringify(blue1) === JSON.stringify(blue0), 'grønt og blått er uendret');
+    check(await page.evaluate(() => document.querySelector('#mixSwatches .swatch').classList.contains('changed')), 'fargen merkes som endret');
+    await page.locator('#mixSwatches .swatch').nth(5).click();
+    check(await page.evaluate(() => document.getElementById('sl-mixH').value === '0' && /Blue/.test(document.querySelector('label[for="sl-mixH"]').textContent)), 'bytte farge viser den fargens verdier');
+    await page.evaluate(() => { const i = document.getElementById('sl-mixS'); i.value = -100; i.dispatchEvent(new Event('input')); });
+    const blue2 = await px(1300, 500);
+    check(Math.max(...blue2) - Math.min(...blue2) < 25 && Math.max(...blue0) - Math.min(...blue0) > 120, 'blått uten metning blir nesten grått ' + blue0 + ' -> ' + blue2);
+    // Curves: dra midtpunktet opp
+    await page.click('#secAdvanced summary');
+    await page.evaluate(() => document.getElementById('curveCanvas').scrollIntoView({ block: 'center' }));
+    await page.waitForTimeout(100);
+    const cb = await page.locator('#curveCanvas').boundingBox();
+    const before = await px(800, 300);
+    await page.mouse.move(cb.x + cb.width * 0.5, cb.y + cb.height * 0.5);
+    await page.mouse.down();
+    await page.mouse.move(cb.x + cb.width * 0.5, cb.y + cb.height * 0.25, { steps: 5 });
+    await page.mouse.up();
+    const cur = await page.evaluate(() => window.__pip.S.adjust.curves.rgb);
+    check(cur.length === 3 && cur[1][1] > 170, 'punkt lagt til og dratt opp ' + JSON.stringify(cur));
+    const after = await px(800, 300);
+    check(after[0] + after[1] + after[2] > before[0] + before[1] + before[2] + 60, 'kurven gjør bildet lysere ' + before + ' -> ' + after);
+    await page.waitForTimeout(300);
+    await page.keyboard.press('Control+z');
+    check(await page.evaluate(() => window.__pip.S.adjust.curves.rgb.length === 2), 'Ctrl+Z angrer kurven');
+    // R-kanal
+    await page.click('[data-chan="r"]');
+    await page.mouse.move(cb.x + cb.width * 0.5, cb.y + cb.height * 0.5);
+    await page.mouse.down();
+    await page.mouse.move(cb.x + cb.width * 0.5, cb.y + cb.height * 0.7, { steps: 5 });
+    await page.mouse.up();
+    check(await page.evaluate(() => window.__pip.S.adjust.curves.r.length === 3 && window.__pip.S.adjust.curves.rgb.length === 2), 'egen kurve for rødkanalen');
+    // Levels
+    const dark0 = await px(800, 300);
+    await page.evaluate(() => { const i = document.getElementById('sl-lvInBlack'); i.value = 80; i.dispatchEvent(new Event('input')); });
+    const dark1 = await px(800, 300);
+    check(dark1[1] < dark0[1] && dark1[2] < dark0[2], 'Levels: høyere svartpunkt gjør mørke toner mørkere ' + dark0 + ' -> ' + dark1);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: path.join(SHOTS, 'advanced.png'), fullPage: true });
+    await page.click('#btnResetAll');
+    await page.waitForTimeout(200);
+    check(await page.evaluate(() => { const a = window.__pip.S.adjust; return a.mixer.every((v) => !v) && a.curves.r.length === 2 && a.levels.inBlack === 0; }), 'Reset nullstiller mixer, kurver og levels');
+    check(errors.length === 0, 'ingen JS-feil ' + errors.join(' | '));
+    await page.close();
+  }
+
   await browser.close();
   srv.close();
   console.log(failures ? `\n${failures} test(er) feilet` : '\nAlle tester bestått');

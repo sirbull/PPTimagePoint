@@ -6,6 +6,8 @@ Et PowerPoint-tillegg som gjør bildebehandling enkelt, rett i PowerPoint:
 
 * **Fjern bakgrunn med fargenøkkel.** Marker bildet, klikk på bakgrunnsfargen, ferdig. Shift+klikk legger til flere farger (skygger, fargeoverganger). «Auto detect background» leser fargen langs kantene.
 * **Color and light:** exposure, brightness, contrast, highlights, shadows, temperature, tint, hue, saturation, vibrance, clarity og sharpness.
+* **Color mixer:** hue, saturation og luminance for åtte fargeområder hver for seg (for eksempel rødt til oransje).
+* **Advanced:** Levels med histogram, og Curves for RGB og hver fargekanal.
 * Resultatet settes inn **på nøyaktig samme sted og i samme størrelse**, og originalen erstattes (kan slås av).
 
 Alt skjer lokalt i PowerPoint. Ingen bilder sendes til noen server.

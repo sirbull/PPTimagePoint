@@ -188,3 +188,24 @@ button[data-icon]:not(.icon), .button[data-icon]:not(.icon) { gap: 6px; }
 .pv-stage canvas { max-width: calc(100% - 24px); max-height: calc(100% - 24px); cursor: crosshair; box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
 .pv-stage.tool-erase canvas, .pv-stage.tool-restore canvas { cursor: none; }
 .pv-foot { display: flex; justify-content: space-between; padding: 6px 12px; font-size: 12px; border-top: 1px solid var(--line); background: var(--bg); }
+
+/* ---------- Color mixer ---------- */
+.swatches { display: flex; justify-content: space-between; gap: 4px; margin: 6px 0 10px; }
+.swatch { width: 28px; height: 28px; min-height: 28px; padding: 0; border-radius: 50%; border: 2px solid transparent;
+  background: var(--sw); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); position: relative; }
+.swatch:hover { background: var(--sw); transform: scale(1.08); }
+.swatch.on { border-color: var(--bg); box-shadow: 0 0 0 2px var(--text); }
+.swatch.changed::after { content: ""; position: absolute; right: -3px; top: -3px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text); border: 1.5px solid var(--bg); }
+
+/* ---------- Advanced ---------- */
+.adv-head { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+.adv-head h4 { margin: 0; }
+.hist { display: block; width: 100%; height: 60px; margin: 6px 0 2px; border-radius: 4px; background: var(--soft); }
+.curve { display: block; width: 100%; aspect-ratio: 1 / 1; height: auto; margin-top: 6px; border: 1px solid var(--line); border-radius: 4px; touch-action: none; cursor: crosshair; }
+.seg.chan { margin-top: 6px; }
+.seg.chan button { min-width: 44px; padding: 3px 8px; font-size: 12px; font-weight: 600; }
+.seg.chan button[data-chan="r"] { color: #c4382e; }
+.seg.chan button[data-chan="g"] { color: #2f8f38; }
+.seg.chan button[data-chan="b"] { color: #2f67b8; }
+.seg.chan button.on { color: var(--bg); }

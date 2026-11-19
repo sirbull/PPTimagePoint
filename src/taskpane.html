@@ -121,6 +121,49 @@
       </div>
     </details>
 
+    <details id="secMixer">
+      <summary>Color mixer</summary>
+      <div class="body">
+        <div class="row end">
+          <button type="button" id="btnResetMixer" class="icon small" data-icon="reset" data-tip="Reset color mixer"></button>
+        </div>
+        <div id="mixSwatches" class="swatches" role="radiogroup" aria-label="Color range"></div>
+        <div class="slider mix" data-key="mixH" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Hue"></div>
+        <div class="slider mix" data-key="mixS" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Saturation"></div>
+        <div class="slider mix" data-key="mixL" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Luminance"></div>
+        <p class="hint">Changes only the selected color range, for example red into orange. Gray tones are not affected.</p>
+      </div>
+    </details>
+
+    <details id="secAdvanced">
+      <summary>Advanced</summary>
+      <div class="body">
+        <div class="adv-head">
+          <h4>Levels</h4>
+          <button type="button" id="btnResetLevels" class="icon small" data-icon="reset" data-tip="Reset levels"></button>
+        </div>
+        <canvas id="histLevels" class="hist" width="512" height="120" aria-label="Histogram"></canvas>
+        <div class="slider lvl" data-key="lvInBlack" data-min="0" data-max="254" data-step="1" data-def="0" data-label="Input black" data-track="light"></div>
+        <div class="slider lvl" data-key="lvGamma" data-min="0.1" data-max="3" data-step="0.01" data-def="1" data-label="Midtones (gamma)" data-track="light"></div>
+        <div class="slider lvl" data-key="lvInWhite" data-min="1" data-max="255" data-step="1" data-def="255" data-label="Input white" data-track="light"></div>
+        <div class="slider lvl" data-key="lvOutBlack" data-min="0" data-max="255" data-step="1" data-def="0" data-label="Output black" data-track="light"></div>
+        <div class="slider lvl" data-key="lvOutWhite" data-min="0" data-max="255" data-step="1" data-def="255" data-label="Output white" data-track="light"></div>
+
+        <div class="adv-head">
+          <h4>Curves</h4>
+          <button type="button" id="btnResetCurves" class="icon small" data-icon="reset" data-tip="Reset all curves"></button>
+        </div>
+        <div class="seg chan" id="curveChan" role="group" aria-label="Channel">
+          <button type="button" data-chan="rgb" class="on" data-tip="All channels">RGB</button>
+          <button type="button" data-chan="r" data-tip="Red channel">R</button>
+          <button type="button" data-chan="g" data-tip="Green channel">G</button>
+          <button type="button" data-chan="b" data-tip="Blue channel">B</button>
+        </div>
+        <canvas id="curveCanvas" class="curve" width="512" height="512" aria-label="Curve editor"></canvas>
+        <p class="hint">Click on the curve to add a point and drag it. Double-click a point, or drag it out of the box, to remove it.</p>
+      </div>
+    </details>
+
   </main>
 
   <footer id="actions" class="actions" hidden>

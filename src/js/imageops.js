@@ -356,15 +356,143 @@
 
   /* ---------------- Fargejusteringer ---------------- */
 
-  var DEFAULT_ADJUST = {
-    exposure: 0, brightness: 0, contrast: 0, highlights: 0, shadows: 0,
-    temperature: 0, tint: 0, hue: 0, saturation: 0, vibrance: 0,
-    clarity: 0, sharpness: 0
-  };
+  var NUM_KEYS = ['exposure', 'brightness', 'contrast', 'highlights', 'shadows',
+    'temperature', 'tint', 'hue', 'saturation', 'vibrance', 'clarity', 'sharpness'];
+
+  // Fargeomraadene i Color mixer (senter i grader)
+  var MIX_COLORS = [
+    { id: 'red', name: 'Red', h: 0 }, { id: 'orange', name: 'Orange', h: 30 },
+    { id: 'yellow', name: 'Yellow', h: 60 }, { id: 'green', name: 'Green', h: 120 },
+    { id: 'aqua', name: 'Aqua', h: 180 }, { id: 'blue', name: 'Blue', h: 240 },
+    { id: 'purple', name: 'Purple', h: 270 }, { id: 'magenta', name: 'Magenta', h: 300 }
+  ];
+
+  function identityCurve() { return [[0, 0], [255, 255]]; }
+
+  /** Nye standardverdier (dype kopier, saa ingenting deles ved et uhell). */
+  function defaultAdjust() {
+    var a = {};
+    NUM_KEYS.forEach(function (k) { a[k] = 0; });
+    a.mixer = new Array(MIX_COLORS.length * 3).fill(0);   // [hue, sat, lum] per farge
+    a.levels = { inBlack: 0, inWhite: 255, gamma: 1, outBlack: 0, outWhite: 255 };
+    a.curves = { rgb: identityCurve(), r: identityCurve(), g: identityCurve(), b: identityCurve() };
+    return a;
+  }
+  var DEFAULT_ADJUST = defaultAdjust();
+
+  function mixerNeutral(m) { return !m || m.every(function (v) { return !v; }); }
+  function levelsNeutral(l) {
+    return !l || (l.inBlack === 0 && l.inWhite === 255 && l.gamma === 1 && l.outBlack === 0 && l.outWhite === 255);
+  }
+  function curveNeutral(pts) {
+    return !pts || (pts.length === 2 && pts[0][0] === 0 && pts[0][1] === 0 && pts[1][0] === 255 && pts[1][1] === 255);
+  }
+  function curvesNeutral(c) { return !c || ['rgb', 'r', 'g', 'b'].every(function (k) { return curveNeutral(c[k]); }); }
 
   function isNeutral(p) {
-    for (var k in DEFAULT_ADJUST) if (p[k]) return false;
-    return true;
+    for (var i = 0; i < NUM_KEYS.length; i++) if (p[NUM_KEYS[i]]) return false;
+    return mixerNeutral(p.mixer) && levelsNeutral(p.levels) && curvesNeutral(p.curves);
+  }
+
+  /** Monoton kubisk kurve gjennom punktene (Fritsch-Carlson), som oppslagstabell. */
+  function curveLUT(pts) {
+    var lut = new Uint8Array(256);
+    var P = (pts || identityCurve()).slice().sort(function (a, b) { return a[0] - b[0]; });
+    var n = P.length;
+    if (n < 2) { for (var z = 0; z < 256; z++) lut[z] = z; return lut; }
+    var xs = P.map(function (p) { return p[0]; }), ys = P.map(function (p) { return p[1]; });
+    var dx = [], dy = [], m = [], k;
+    for (k = 0; k < n - 1; k++) { dx[k] = Math.max(1e-6, xs[k + 1] - xs[k]); dy[k] = (ys[k + 1] - ys[k]) / dx[k]; }
+    m[0] = dy[0]; m[n - 1] = dy[n - 2];
+    for (k = 1; k < n - 1; k++) m[k] = dy[k - 1] * dy[k] <= 0 ? 0 : (dy[k - 1] + dy[k]) / 2;
+    for (k = 0; k < n - 1; k++) {
+      if (dy[k] === 0) { m[k] = 0; m[k + 1] = 0; continue; }
+      var a = m[k] / dy[k], b = m[k + 1] / dy[k], h = a * a + b * b;
+      if (h > 9) { var t = 3 / Math.sqrt(h); m[k] = t * a * dy[k]; m[k + 1] = t * b * dy[k]; }
+    }
+    for (var x = 0; x < 256; x++) {
+      var y;
+      if (x <= xs[0]) y = ys[0];
+      else if (x >= xs[n - 1]) y = ys[n - 1];
+      else {
+        k = 0;
+        while (k < n - 2 && x > xs[k + 1]) k++;
+        var hh = dx[k], tt = (x - xs[k]) / hh, t2 = tt * tt, t3 = t2 * tt;
+        y = (2 * t3 - 3 * t2 + 1) * ys[k] + (t3 - 2 * t2 + tt) * hh * m[k] + (-2 * t3 + 3 * t2) * ys[k + 1] + (t3 - t2) * hh * m[k + 1];
+      }
+      lut[x] = Math.round(clamp(y, 0, 255));
+    }
+    return lut;
+  }
+
+  function levelsLUT(l) {
+    var lut = new Uint8Array(256);
+    var inB = clamp(l.inBlack, 0, 254), inW = clamp(Math.max(l.inWhite, inB + 1), 1, 255);
+    var g = clamp(l.gamma || 1, 0.1, 10);
+    for (var i = 0; i < 256; i++) {
+      var t = clamp((i - inB) / (inW - inB), 0, 1);
+      t = Math.pow(t, 1 / g);
+      lut[i] = Math.round(clamp(l.outBlack + t * (l.outWhite - l.outBlack), 0, 255));
+    }
+    return lut;
+  }
+
+  /** Oppslagstabeller (dh, ds, dl) per hel grad for Color mixer. */
+  function mixerTables(mix) {
+    var n = MIX_COLORS.length;
+    var dh = new Float32Array(360), ds = new Float32Array(360), dl = new Float32Array(360);
+    for (var deg = 0; deg < 360; deg++) {
+      // finn de to naermeste fargene rundt denne fargetonen
+      var i = n - 1;
+      for (var k = 0; k < n; k++) if (MIX_COLORS[k].h <= deg) i = k;
+      var j = (i + 1) % n;
+      var h0 = MIX_COLORS[i].h, h1 = MIX_COLORS[j].h <= h0 ? MIX_COLORS[j].h + 360 : MIX_COLORS[j].h;
+      var d = deg < h0 ? deg + 360 : deg;
+      var t = (d - h0) / (h1 - h0);
+      t = t * t * (3 - 2 * t);
+      var wi = 1 - t, wj = t;
+      dh[deg] = (mix[i * 3] * wi + mix[j * 3] * wj) * 0.3;          // +-30 grader
+      ds[deg] = (mix[i * 3 + 1] * wi + mix[j * 3 + 1] * wj) / 100;  // -1..1
+      dl[deg] = (mix[i * 3 + 2] * wi + mix[j * 3 + 2] * wj) / 100;  // -1..1
+    }
+    return { dh: dh, ds: ds, dl: dl };
+  }
+
+  function hue2rgb(p, q, t) {
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  }
+
+  function applyMixer(d, mix) {
+    var T = mixerTables(mix), DH = T.dh, DS = T.ds, DL = T.dl;
+    for (var q = 0; q < d.length; q += 4) {
+      var r = d[q] / 255, g = d[q + 1] / 255, b = d[q + 2] / 255;
+      var mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      var dd = mx - mn;
+      if (dd < 0.004) continue; // graatoner beroeres ikke
+      var l = (mx + mn) / 2;
+      var s = l > 0.5 ? dd / (2 - mx - mn) : dd / (mx + mn);
+      var h;
+      if (mx === r) h = (g - b) / dd + (g < b ? 6 : 0);
+      else if (mx === g) h = (b - r) / dd + 2;
+      else h = (r - g) / dd + 4;
+      h *= 60;
+      var hi = Math.floor(h) % 360;
+      // svakt fargede piksler paavirkes mindre
+      var sw = s < 0.25 ? s / 0.25 : 1;
+      sw = sw * sw * (3 - 2 * sw);
+      var nh = h + DH[hi] * sw;
+      var ns = clamp(s * (1 + DS[hi] * sw), 0, 1);
+      var nl = clamp(l + DL[hi] * sw * 0.5 * (1 - Math.abs(2 * l - 1)), 0, 1);
+      nh = ((nh % 360) + 360) % 360 / 360;
+      var qq = nl < 0.5 ? nl * (1 + ns) : nl + ns - nl * ns, pp = 2 * nl - qq;
+      d[q] = hue2rgb(pp, qq, nh + 1 / 3) * 255;
+      d[q + 1] = hue2rgb(pp, qq, nh) * 255;
+      d[q + 2] = hue2rgb(pp, qq, nh - 1 / 3) * 255;
+    }
   }
 
   function buildToneLUTs(p) {
@@ -429,8 +557,24 @@
     var w = img.width, h = img.height, n = w * h, d = out.data;
     var i, q;
     // 1. Tonekurver (eksponering, temperatur, lysstyrke, kontrast, hoeylys, skygger)
-    if (p.exposure || p.temperature || p.tint || p.brightness || p.contrast || p.highlights || p.shadows) {
+    var tone = p.exposure || p.temperature || p.tint || p.brightness || p.contrast || p.highlights || p.shadows;
+    var adv = !levelsNeutral(p.levels) || !curvesNeutral(p.curves);
+    if (tone || adv) {
       var L = buildToneLUTs(p);
+      if (adv) {
+        // Levels, deretter kurve per kanal, deretter RGB-kurven
+        var LV = levelsNeutral(p.levels) ? null : levelsLUT(p.levels);
+        var c = p.curves || {};
+        var CR = curveLUT(c.r), CG = curveLUT(c.g), CB = curveLUT(c.b), CM = curveLUT(c.rgb);
+        var chans = [CR, CG, CB];
+        for (var ci = 0; ci < 3; ci++) {
+          for (var ii = 0; ii < 256; ii++) {
+            var v0 = L[ci][ii];
+            if (LV) v0 = LV[v0];
+            L[ci][ii] = CM[chans[ci][v0]];
+          }
+        }
+      }
       var lr = L[0], lg = L[1], lb = L[2];
       for (q = 0; q < d.length; q += 4) { d[q] = lr[d[q]]; d[q + 1] = lg[d[q + 1]]; d[q + 2] = lb[d[q + 2]]; }
     }
@@ -466,6 +610,8 @@
         d[q] = nr; d[q + 1] = ng; d[q + 2] = nb;
       }
     }
+    // 3b. Color mixer (fargetone, metning og lyshet per fargeomraade)
+    if (!mixerNeutral(p.mixer)) applyMixer(d, p.mixer);
     // 4. Skarphet (uskarp maske)
     if (p.sharpness > 0) {
       var rad = Math.max(1, Math.round(0.9 * scale));
@@ -632,6 +778,10 @@
 
   global.ImageOps = {
     DEFAULT_ADJUST: DEFAULT_ADJUST,
+    defaultAdjust: defaultAdjust,
+    MIX_COLORS: MIX_COLORS,
+    NUM_KEYS: NUM_KEYS,
+    curveLUT: curveLUT,
     rgbToLab: rgbToLab,
     sampleColor: sampleColor,
     detectBorderColor: detectBorderColor,
