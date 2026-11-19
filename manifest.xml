@@ -7,9 +7,9 @@
   <Id>9bfd5010-5050-433e-9166-cedb07dc32f8</Id>
   <Version>1.0.0.0</Version>
   <ProviderName>PPTimagePoint</ProviderName>
-  <DefaultLocale>nb-NO</DefaultLocale>
+  <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="PPTimagePoint"/>
-  <Description DefaultValue="Fjern bakgrunn med fargenøkkel, juster farger og lys, og skaler bilder i høy kvalitet rett i PowerPoint."/>
+  <Description DefaultValue="Remove backgrounds with a color key, adjust hue, saturation, clarity and more, and resize pictures in high quality, right inside PowerPoint."/>
   <IconUrl DefaultValue="https://sirbull.github.io/PPTimagePoint/assets/icon-32.png"/>
   <HighResolutionIconUrl DefaultValue="https://sirbull.github.io/PPTimagePoint/assets/icon-64.png"/>
   <SupportUrl DefaultValue="https://github.com/sirbull/PPTimagePoint"/>
@@ -76,13 +76,13 @@
         <bt:Url id="Taskpane.Url" DefaultValue="https://sirbull.github.io/PPTimagePoint/taskpane.html"/>
       </bt:Urls>
       <bt:ShortStrings>
-        <bt:String id="GetStarted.Title" DefaultValue="PPTimagePoint er klar"/>
-        <bt:String id="Group.Label" DefaultValue="Bilde"/>
-        <bt:String id="Button.Label" DefaultValue="Bildeverktøy"/>
+        <bt:String id="GetStarted.Title" DefaultValue="PPTimagePoint is ready"/>
+        <bt:String id="Group.Label" DefaultValue="Picture"/>
+        <bt:String id="Button.Label" DefaultValue="Picture Tools"/>
       </bt:ShortStrings>
       <bt:LongStrings>
-        <bt:String id="GetStarted.Description" DefaultValue="Marker et bilde og klikk Bildeverktøy på Hjem-fanen."/>
-        <bt:String id="Button.Tooltip" DefaultValue="Fjern bakgrunn, juster farger og skaler det markerte bildet."/>
+        <bt:String id="GetStarted.Description" DefaultValue="Select a picture and click Picture Tools on the Home tab."/>
+        <bt:String id="Button.Tooltip" DefaultValue="Remove the background, adjust colors and resize the selected picture."/>
       </bt:LongStrings>
     </Resources>
   </VersionOverrides>

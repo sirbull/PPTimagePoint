@@ -7,7 +7,7 @@ tpl = (ROOT / "manifest.template.xml").read_text(encoding="utf-8")
 TARGETS = {
     "manifest.xml": dict(ID="9bfd5010-5050-433e-9166-cedb07dc32f8", NAME="PPTimagePoint",
                          BASE="https://sirbull.github.io/PPTimagePoint", ORIGIN="https://sirbull.github.io"),
-    "manifest.local.xml": dict(ID="9bfd5010-5050-433e-9166-cedb07dc32f9", NAME="PPTimagePoint (lokal)",
+    "manifest.local.xml": dict(ID="9bfd5010-5050-433e-9166-cedb07dc32f9", NAME="PPTimagePoint (local)",
                                BASE="https://localhost:3000", ORIGIN="https://localhost:3000"),
 }
 for name, v in TARGETS.items():

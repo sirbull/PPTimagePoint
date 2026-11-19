@@ -1,10 +1,12 @@
 # PPTimagePoint
 
+Panelet er på engelsk og bruker de vanlige engelske fagordene (hue, saturation, clarity osv.). Denne beskrivelsen er på norsk.
+
 Et PowerPoint-tillegg som gjør bildebehandling enkelt, rett i PowerPoint:
 
-* **Fjern bakgrunn med fargenøkkel.** Marker bildet, klikk på bakgrunnsfargen, ferdig. Shift+klikk legger til flere farger (skygger, fargeoverganger). «Finn bakgrunn automatisk» leser fargen langs kantene.
-* **Farger og lys:** eksponering, lysstyrke, kontrast, høylys, skygger, temperatur, fargestikk, fargetone (hue), metning, livfullhet, klarhet og skarphet.
-* **Skalering i høy kvalitet** (Lanczos), både ned og opp, med knapp for «optimal oppløsning for lysbildet» som krymper store fotofiler uten synlig tap.
+* **Fjern bakgrunn med fargenøkkel.** Marker bildet, klikk på bakgrunnsfargen, ferdig. Shift+klikk legger til flere farger (skygger, fargeoverganger). «Auto detect background» leser fargen langs kantene.
+* **Color and light:** exposure, brightness, contrast, highlights, shadows, temperature, tint, hue, saturation, vibrance, clarity og sharpness.
+* **Skalering i høy kvalitet** (Lanczos), både ned og opp, med knapp for «Optimize for slide» som krymper store fotofiler uten synlig tap.
 * Resultatet settes inn **på nøyaktig samme sted og i samme størrelse**, og originalen erstattes (kan slås av).
 
 Alt skjer lokalt i PowerPoint. Ingen bilder sendes til noen server.
@@ -12,17 +14,17 @@ Alt skjer lokalt i PowerPoint. Ingen bilder sendes til noen server.
 ## Slik bruker du det
 
 1. Marker et bilde på lysbildet.
-2. Klikk **Hjem > Bildeverktøy** for å åpne panelet, og trykk **Hent markert bilde**.
+2. Klikk **Hjem > Picture Tools** for å åpne panelet, og trykk **Get selected picture**.
 3. Klikk på bakgrunnen i forhåndsvisningen. Bakgrunnen forsvinner med en gang.
 4. Finjuster:
-   * **Toleranse**: hvor like bakgrunnsfargen pikslene må være for å fjernes.
-   * **Myk overgang**: myk kant i stedet for hard kant.
-   * **Område**: «Sammenhengende bakgrunn» fjerner bare bakgrunn som henger sammen med det du klikket på eller med bildekantene, slik at like farger inne i motivet beholdes. «Fargen overalt» fjerner fargen i hele bildet (nyttig for hull, f.eks. mellom armen og kroppen).
-   * **Krymp / utvid kant** og **Kantutjevning** rydder i kanten.
-   * **Fjern fargesøl i kantene** fjerner f.eks. grønt skjær fra greenscreen.
-   * **Visk ut / Gjenopprett** er pensler for å rette opp det fargenøkkelen ikke klarer alene.
-   * Hold inne **Før** for å sammenligne med originalen.
-5. Trykk **Sett inn i lysbildet**.
+   * **Tolerance**: hvor like bakgrunnsfargen pikslene må være for å fjernes.
+   * **Softness**: myk kant i stedet for hard kant.
+   * **Keying mode**: «Contiguous background» fjerner bare bakgrunn som henger sammen med det du klikket på eller med bildekantene, slik at like farger inne i motivet beholdes. «Color everywhere in the image» fjerner fargen i hele bildet (nyttig for hull, f.eks. mellom armen og kroppen).
+   * **Choke / expand edge** og **Feather** rydder i kanten.
+   * **Despill** fjerner f.eks. grønt skjær fra greenscreen.
+   * **Erase / Restore** er pensler for å rette opp det fargenøkkelen ikke klarer alene.
+   * Hold inne **Before** for å sammenligne med originalen.
+5. Trykk **Insert into slide**.
 
 Panelet henter originalfilen som ligger inne i presentasjonen, ikke en skjermkopi, så du jobber alltid i full oppløsning (opptil 6000 px på lengste side). Beskjæring du har gjort i PowerPoint blir tatt med.
 
@@ -82,7 +84,7 @@ Last så inn `manifest.local.xml` i stedet for `manifest.xml`. Endres adressen, 
 
 ### Krav og begrensninger
 
-* Henting av det markerte bildet krever PowerPoint API 1.8 (Microsoft 365, oppdatert versjon på Windows, Mac og nett). På eldre versjoner kan du bruke «Åpne fil» eller lime inn bildet med Ctrl+V i panelet.
+* Henting av det markerte bildet krever PowerPoint API 1.8 (Microsoft 365, oppdatert versjon på Windows, Mac og nett). På eldre versjoner kan du bruke «Open file» eller lime inn bildet med Ctrl+V i panelet.
 * Rotasjon, rammer og effekter på originalbildet følger ikke med når bildet erstattes. Legg dem på igjen etterpå.
 * Fargenøkkel fungerer best når bakgrunnen er noenlunde ensfarget (studio, produktbilder, logoer, greenscreen). For travle fotobakgrunner trengs penselen, eller en AI-basert modell (se under).
 

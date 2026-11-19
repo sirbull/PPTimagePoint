@@ -40,7 +40,7 @@
      * meta beskriver plassering paa lysbildet (punkter) for aa kunne erstatte.
      */
     getSelectedImage: async function () {
-      if (!Bridge.available) throw new Error('PowerPoint er ikke tilgjengelig.');
+      if (!Bridge.available) throw new Error('PowerPoint is not available.');
       var firstError = null;
       if (Bridge.supports('1.8') && global.PowerPoint) {
         try { return await Bridge._viaSlideExport(); }
@@ -59,10 +59,10 @@
         var slides = ctx.presentation.getSelectedSlides();
         slides.load('items/id');
         await ctx.sync();
-        if (!shapes.items.length) throw userError('Marker et bilde på lysbildet først.');
+        if (!shapes.items.length) throw userError('Select a picture on the slide first.');
         var shape = shapes.items.filter(function (s) { return s.type === 'Image'; })[0];
-        if (!shape) throw userError('Det markerte objektet er ikke et bilde. Marker et bilde (ikke en gruppe eller figur med bildefyll).');
-        if (!slides.items.length) throw userError('Fant ikke lysbildet til bildet.');
+        if (!shape) throw userError('The selected object is not a picture. Select a picture (not a group or a shape with a picture fill).');
+        if (!slides.items.length) throw userError('Could not find the slide for this picture.');
         var slide = slides.items[0];
         var exported = slide.exportAsBase64();
         await ctx.sync();
@@ -80,16 +80,16 @@
         try {
           Office.context.document.getSelectedDataAsync(Office.CoercionType.Image, function (res) {
             if (res.status !== Office.AsyncResultStatus.Succeeded) {
-              reject(userError('Denne PowerPoint-versjonen lar ikke tillegget lese bildet direkte. Bruk "Åpne fil" eller lim inn bildet (Ctrl+V) i panelet.'));
+              reject(userError('This version of PowerPoint does not let add-ins read the picture directly. Use "Open file" or paste the image (Ctrl+V) into the pane.'));
               return;
             }
             var bin = atob(res.value);
             var bytes = new Uint8Array(bin.length);
             for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-            resolve({ bytes: bytes, mime: 'image/png', crop: { l: 0, t: 0, r: 0, b: 0 }, name: 'bilde', meta: null });
+            resolve({ bytes: bytes, mime: 'image/png', crop: { l: 0, t: 0, r: 0, b: 0 }, name: 'image', meta: null });
           });
         } catch (e) {
-          reject(userError('Kunne ikke lese markeringen. Bruk "Åpne fil" i stedet.'));
+          reject(userError('Could not read the selection. Use "Open file" instead.'));
         }
       });
     },
@@ -99,7 +99,7 @@
      * samme sted; med replaceMeta slettes originalen etterpaa.
      */
     insertImage: async function (base64, placement, replaceMeta) {
-      if (!Bridge.available) throw new Error('PowerPoint er ikke tilgjengelig.');
+      if (!Bridge.available) throw new Error('PowerPoint is not available.');
       var opts = { coercionType: Office.CoercionType.Image };
       if (placement) {
         opts.imageLeft = placement.left;
@@ -110,7 +110,7 @@
       await new Promise(function (resolve, reject) {
         Office.context.document.setSelectedDataAsync(base64, opts, function (res) {
           if (res.status === Office.AsyncResultStatus.Succeeded) resolve();
-          else reject(new Error('PowerPoint avviste bildet: ' + (res.error && res.error.message)));
+          else reject(new Error('PowerPoint rejected the image: ' + (res.error && res.error.message)));
         });
       });
 

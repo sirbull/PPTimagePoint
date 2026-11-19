@@ -65,7 +65,7 @@
       var url = URL.createObjectURL(blob);
       var img = new Image();
       img.onload = function () { resolve(img); setTimeout(function () { URL.revokeObjectURL(url); }, 1000); };
-      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('Kunne ikke lese bildefilen.')); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('Could not read the image file.')); };
       img.src = url;
     });
   }
@@ -79,7 +79,7 @@
 
   function canvasToBlob(canvas, type, quality) {
     return new Promise(function (resolve, reject) {
-      canvas.toBlob(function (b) { b ? resolve(b) : reject(new Error('Kunne ikke lage bildefil.')); }, type, quality);
+      canvas.toBlob(function (b) { b ? resolve(b) : reject(new Error('Could not create the image file.')); }, type, quality);
     });
   }
 
@@ -98,7 +98,7 @@
     opt = opt || {};
     var bmp = await decodeBlob(blob);
     var W = bmp.width || bmp.naturalWidth, H = bmp.height || bmp.naturalHeight;
-    if (!W || !H) throw new Error('Bildet ser ut til å være tomt.');
+    if (!W || !H) throw new Error('The image appears to be empty.');
     var c = opt.crop || { l: 0, t: 0, r: 0, b: 0 };
     var sx = Math.round(Math.max(0, c.l) * W), sy = Math.round(Math.max(0, c.t) * H);
     var sw = Math.max(1, W - sx - Math.round(Math.max(0, c.r) * W));
@@ -107,7 +107,7 @@
     var proxy = imageDataFromSource(bmp, sx, sy, sw, sh, PROXY_MAX);
     if (bmp.close) bmp.close();
 
-    S.src = { full: full, proxy: proxy, name: opt.name || 'bilde', mime: blob.type || 'image/png', meta: opt.meta || null, capped: Math.max(sw, sh) > FULL_MAX };
+    S.src = { full: full, proxy: proxy, name: opt.name || 'image', mime: blob.type || 'image/png', meta: opt.meta || null, capped: Math.max(sw, sh) > FULL_MAX };
     S.strokes = [];
     S.key.colors = []; S.key.seeds = []; S.key.enabled = false;
     S.out.w = full.width; S.out.h = full.height;
@@ -119,14 +119,14 @@
     ['stage', 'toolbar', 'info', 'panels', 'actions'].forEach(function (id) { $(id).hidden = false; });
     syncUI();
     render();
-    var msg = 'Bildet er lastet (' + W + ' × ' + H + ' px).';
-    if (S.src.capped) msg += ' Det behandles i ' + full.width + ' × ' + full.height + ' px.';
+    var msg = 'Image loaded (' + W + ' × ' + H + ' px).';
+    if (S.src.capped) msg += ' Processing at ' + full.width + ' × ' + full.height + ' px.';
     status(msg, 'ok');
   }
 
   async function getFromPowerPoint() {
     status('');
-    await busy(true, 'Henter bildet fra PowerPoint ...');
+    await busy(true, 'Getting the image from PowerPoint ...');
     try {
       var pic = await Bridge.getSelectedImage();
       await loadBlob(new Blob([pic.bytes], { type: pic.mime }), pic);
@@ -254,12 +254,12 @@
   async function doInsert() {
     if (!S.src) return;
     status('');
-    await busy(true, 'Behandler bildet i full oppløsning ...');
+    await busy(true, 'Processing at full resolution ...');
     try {
       var res = renderFull();
       var enc = await encode(res.image);
       if (!Bridge.available) { download(enc); return; }
-      await busy(true, 'Setter inn i lysbildet ...');
+      await busy(true, 'Inserting into the slide ...');
       var b64 = await blobToBase64(enc.blob);
       var replace = $('replace').checked && S.src.meta;
       var r = await Bridge.insertImage(b64, placementFor(res.rect), replace ? S.src.meta : null);
@@ -274,8 +274,8 @@
       } else if (replace) {
         S.src.meta = null;
       }
-      var msg = 'Bildet er satt inn (' + res.image.width + ' × ' + res.image.height + ' px).';
-      if (replace && r && !r.deleted) msg += ' Originalen ble ikke fjernet automatisk, slett den manuelt om du vil.';
+      var msg = 'Image inserted (' + res.image.width + ' × ' + res.image.height + ' px).';
+      if (replace && r && !r.deleted) msg += ' The original could not be removed automatically. Delete it manually if needed.';
       status(msg, 'ok');
     } catch (e) {
       status(e.message || String(e), 'err');
@@ -286,7 +286,7 @@
 
   async function doDownload() {
     if (!S.src) return;
-    await busy(true, 'Behandler bildet i full oppløsning ...');
+    await busy(true, 'Processing at full resolution ...');
     try { download(await encode(renderFull().image)); }
     catch (e) { status(e.message || String(e), 'err'); }
     finally { busy(false); }
@@ -295,10 +295,10 @@
   function download(enc) {
     var a = document.createElement('a');
     a.href = URL.createObjectURL(enc.blob);
-    a.download = (S.src.name || 'bilde').replace(/[^\w\-æøåÆØÅ ]+/g, '').trim().replace(/\s+/g, '-') + '-redigert.' + enc.ext;
+    a.download = (S.src.name || 'image').replace(/[^\w\-æøåÆØÅ ]+/g, '').trim().replace(/\s+/g, '-') + '-edited.' + enc.ext;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
-    status('Bildet er lastet ned.', 'ok');
+    status('Image downloaded.', 'ok');
   }
 
   /* ---------------- Grensesnitt ---------------- */
@@ -354,7 +354,7 @@
     setSlider('brush', S.brush);
     $('outW').value = S.out.w; $('outH').value = S.out.h;
     $('lockBtn').classList.toggle('on', S.out.lock);
-    $('lockBtn').textContent = S.out.lock ? 'Låst' : 'Fri';
+    $('lockBtn').textContent = S.out.lock ? 'Locked' : 'Free';
     $('lockBtn').setAttribute('aria-pressed', String(S.out.lock));
     $('format').value = S.format;
     $('btnOptimal').disabled = !(S.src && S.src.meta && S.src.meta.width);
@@ -368,7 +368,7 @@
       var chip = document.createElement('span');
       chip.className = 'chip';
       var hex = '#' + [c.r, c.g, c.b].map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join('');
-      chip.innerHTML = '<i style="background:' + hex + '"></i>' + hex.toUpperCase() + '<button type="button" title="Fjern fargen" aria-label="Fjern fargen">×</button>';
+      chip.innerHTML = '<i style="background:' + hex + '"></i>' + hex.toUpperCase() + '<button type="button" title="Remove color" aria-label="Remove color">×</button>';
       chip.querySelector('button').addEventListener('click', function () {
         S.key.colors.splice(i, 1);
         S.key.seeds.splice(i, 1);
@@ -391,7 +391,7 @@
         w = Math.round(r.w / P.width * S.out.w); h = Math.round(r.h / P.height * S.out.h);
       }
     }
-    txt += '   Resultat: ca. ' + w + ' × ' + h + ' px';
+    txt += '   Output: approx. ' + w + ' × ' + h + ' px';
     $('info').textContent = txt;
   }
 
@@ -479,8 +479,8 @@
 
   function openFile(file) {
     if (!file) return;
-    busy(true, 'Leser bildet ...').then(function () {
-      return loadBlob(file, { name: (file.name || 'bilde').replace(/\.[^.]+$/, '') });
+    busy(true, 'Reading the image ...').then(function () {
+      return loadBlob(file, { name: (file.name || 'image').replace(/\.[^.]+$/, '') });
     }).catch(function (e) { status(e.message || String(e), 'err'); })
       .then(function () { busy(false); });
   }
@@ -514,7 +514,7 @@
     $('btnAuto').addEventListener('click', function () {
       if (!S.src) return;
       var c = Ops.detectBorderColor(S.src.proxy);
-      if (!c) { status('Fant ingen tydelig bakgrunnsfarge langs kantene.', 'err'); return; }
+      if (!c) { status('No clear background color found along the edges.', 'err'); return; }
       S.key.colors = [c]; S.key.seeds = [{ x: 0, y: 0 }];
       S.key.mode = 'connected'; S.key.fromEdges = true; S.key.enabled = true;
       syncUI(); render();
@@ -522,7 +522,7 @@
     $('keyEnabled').addEventListener('change', function (e) {
       if (e.target.checked && !S.key.colors.length) {
         e.target.checked = false;
-        status('Klikk på bakgrunnen i bildet, eller bruk «Finn bakgrunn automatisk».');
+        status('Click the background in the image, or use "Auto detect background".');
         return;
       }
       S.key.enabled = e.target.checked; render();
@@ -561,10 +561,10 @@
       S.out.lock = true;
       if (target >= F.width) {
         setOutW(F.width);
-        status('Bildet har allerede passe eller lavere oppløsning for størrelsen på lysbildet.', 'ok');
+        status('The image already has the right or a lower resolution for its size on the slide.', 'ok');
       } else {
         setOutW(target);
-        status('Satt til ' + S.out.w + ' × ' + S.out.h + ' px (220 ppi på lysbildet).', 'ok');
+        status('Set to ' + S.out.w + ' × ' + S.out.h + ' px (220 ppi on the slide).', 'ok');
       }
     });
     $('format').addEventListener('change', function (e) { S.format = e.target.value; });
@@ -593,8 +593,8 @@
       $('btnInsert').hidden = true;
       $('replace').parentElement.hidden = true;
       $('btnDownload').classList.add('primary', 'grow');
-      $('btnDownload').textContent = 'Last ned bildet';
-      status('Åpnet utenfor PowerPoint. Du kan teste verktøyet og laste ned resultatet.');
+      $('btnDownload').textContent = 'Download image';
+      status('Running outside PowerPoint. You can try the tools and download the result.');
     }
   }
 

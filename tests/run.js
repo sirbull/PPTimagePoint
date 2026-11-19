@@ -164,7 +164,7 @@ async function decodeB64Png(page, b64) {
     const png = await decodeB64Png(page, ins.data);
     check(png.w === 800 && png.h === 1000, 'innsatt PNG har full oppløsning (' + png.w + 'x' + png.h + ')');
     const st = await page.locator('#status').textContent();
-    check(/satt inn/.test(st), 'statusmelding: ' + st);
+    check(/inserted/.test(st), 'statusmelding: ' + st);
     // ny runde med trim: skal erstatte det nye bildet
     await page.check('#trim');
     await page.click('#btnInsert');

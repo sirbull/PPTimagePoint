@@ -55,7 +55,7 @@
     target = target || {};
     var zip = await JSZip.loadAsync(data, { base64: typeof data === 'string' });
     var slides = slideFiles(zip);
-    if (!slides.length) throw new Error('Fant ingen lysbilder i eksporten.');
+    if (!slides.length) throw new Error('No slides found in the export.');
     var slidePath = slides[Math.min(slides.length - 1, target.slideIndex || 0)];
     var xml = await zip.file(slidePath).async('string');
     var doc = new DOMParser().parseFromString(xml, 'application/xml');
@@ -75,7 +75,7 @@
         srcRect: firstNS(pic, NS_A, 'srcRect')
       });
     });
-    if (!cands.length) throw new Error('Fant ikke noe bilde på lysbildet.');
+    if (!cands.length) throw new Error('No picture found on the slide.');
 
     var chosen = null;
     var wantId = idNumber(target.id);
@@ -85,27 +85,27 @@
       if (byName.length) chosen = byName[0];
     }
     if (!chosen) chosen = cands.length === 1 ? cands[0] : null;
-    if (!chosen) throw new Error('Klarte ikke å finne det markerte bildet i lysbildet.');
+    if (!chosen) throw new Error('Could not find the selected picture on the slide.');
 
     var relsPath = slidePath.replace(/slides\/(slide\d+\.xml)$/, 'slides/_rels/$1.rels');
     var relsFile = zip.file(relsPath);
-    if (!relsFile) throw new Error('Mangler relasjonsfil for lysbildet.');
+    if (!relsFile) throw new Error('The slide relationship file is missing.');
     var relsDoc = new DOMParser().parseFromString(await relsFile.async('string'), 'application/xml');
     var rels = relsDoc.getElementsByTagNameNS(NS_REL, 'Relationship');
     if (!rels.length) rels = relsDoc.getElementsByTagName('Relationship');
     var targetPath = null;
     for (var i = 0; i < rels.length; i++) {
       if (rels[i].getAttribute('Id') === chosen.embed) {
-        if (rels[i].getAttribute('TargetMode') === 'External') throw new Error('Bildet er lenket, ikke innebygd.');
+        if (rels[i].getAttribute('TargetMode') === 'External') throw new Error('The picture is linked, not embedded.');
         targetPath = resolvePath(slidePath, rels[i].getAttribute('Target'));
         break;
       }
     }
-    if (!targetPath || !zip.file(targetPath)) throw new Error('Fant ikke bildefilen i presentasjonen.');
+    if (!targetPath || !zip.file(targetPath)) throw new Error('Could not find the image file in the presentation.');
 
     var ext = (targetPath.split('.').pop() || '').toLowerCase();
     var mime = MIME[ext];
-    if (!mime) throw new Error('Bildeformatet .' + ext + ' støttes ikke (prøv PNG eller JPG).');
+    if (!mime) throw new Error('The image format .' + ext + ' is not supported (try PNG or JPG).');
     var bytes = await zip.file(targetPath).async('uint8array');
 
     var crop = { l: 0, t: 0, r: 0, b: 0 };
@@ -115,7 +115,7 @@
         crop[k] = isNaN(v) ? 0 : v / 100000;
       });
     }
-    return { bytes: bytes, mime: mime, crop: crop, name: chosen.name || 'bilde' };
+    return { bytes: bytes, mime: mime, crop: crop, name: chosen.name || 'image' };
   }
 
   global.PptxExtract = { extractPicture: extractPicture, resolvePath: resolvePath };

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="nb">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -19,8 +19,8 @@
       <span>PPTimagePoint</span>
     </div>
     <div class="load-row">
-      <button id="btnGet" class="primary" type="button">Hent markert bilde</button>
-      <label class="button" for="fileInput">Åpne fil</label>
+      <button id="btnGet" class="primary" type="button">Get selected picture</button>
+      <label class="button" for="fileInput">Open file</label>
       <input id="fileInput" type="file" accept="image/png,image/jpeg,image/gif,image/bmp,image/webp" hidden>
     </div>
   </header>
@@ -29,25 +29,25 @@
 
   <section class="stage-wrap">
     <div id="empty" class="empty">
-      <p><strong>Marker et bilde i PowerPoint</strong> og trykk «Hent markert bilde».</p>
-      <p class="muted">Du kan også dra et bilde hit eller lime inn med Ctrl+V.</p>
+      <p><strong>Select a picture in PowerPoint</strong> and click "Get selected picture".</p>
+      <p class="muted">You can also drop an image here or paste one with Ctrl+V.</p>
     </div>
     <div id="stage" class="stage checker" hidden>
       <canvas id="view"></canvas>
       <div id="brushCursor" class="brush-cursor" hidden></div>
     </div>
     <div id="toolbar" class="toolbar" hidden>
-      <div class="seg" role="group" aria-label="Verktøy">
-        <button type="button" data-tool="pick" class="on" title="Klikk på bakgrunnen for å fjerne den. Shift+klikk legger til flere farger.">Velg farge</button>
-        <button type="button" data-tool="erase" title="Mal bort det som skal bli gjennomsiktig">Visk ut</button>
-        <button type="button" data-tool="restore" title="Mal tilbake deler av motivet">Gjenopprett</button>
+      <div class="seg" role="group" aria-label="Tools">
+        <button type="button" data-tool="pick" class="on" title="Click the background to remove it. Shift+click adds more key colors.">Pick color</button>
+        <button type="button" data-tool="erase" title="Paint over areas that should become transparent">Erase</button>
+        <button type="button" data-tool="restore" title="Paint back parts of the subject">Restore</button>
       </div>
-      <button type="button" id="btnCompare" class="ghost" title="Hold inne for å se originalen">Før</button>
-      <select id="bgSelect" title="Bakgrunn i forhåndsvisningen">
-        <option value="checker">Rutenett</option>
-        <option value="white">Hvit</option>
-        <option value="black">Svart</option>
-        <option value="slide">Grå</option>
+      <button type="button" id="btnCompare" class="ghost" title="Hold to show the original">Before</button>
+      <select id="bgSelect" title="Preview background">
+        <option value="checker">Checkerboard</option>
+        <option value="white">White</option>
+        <option value="black">Black</option>
+        <option value="slide">Gray</option>
       </select>
     </div>
     <div id="info" class="info muted" hidden></div>
@@ -55,83 +55,83 @@
 
   <main id="panels" hidden>
     <details open id="secKey">
-      <summary>Fjern bakgrunn</summary>
+      <summary>Remove background</summary>
       <div class="body">
-        <p class="hint">Klikk på bakgrunnsfargen i bildet. <kbd>Shift</kbd>+klikk legger til flere farger (f.eks. ved skygger eller fargeoverganger).</p>
+        <p class="hint">Click the background color in the image. <kbd>Shift</kbd>+click adds more key colors (for shadows or gradients).</p>
         <div class="row">
-          <button type="button" id="btnAuto">Finn bakgrunn automatisk</button>
-          <label class="switch"><input type="checkbox" id="keyEnabled"> På</label>
+          <button type="button" id="btnAuto">Auto detect background</button>
+          <label class="switch"><input type="checkbox" id="keyEnabled"> On</label>
         </div>
         <div id="chips" class="chips"></div>
-        <div class="slider" data-key="tolerance" data-min="0" data-max="100" data-step="1" data-def="18" data-label="Toleranse"></div>
-        <div class="slider" data-key="softness" data-min="0" data-max="60" data-step="1" data-def="10" data-label="Myk overgang"></div>
-        <label class="field">Område
+        <div class="slider" data-key="tolerance" data-min="0" data-max="100" data-step="1" data-def="18" data-label="Tolerance"></div>
+        <div class="slider" data-key="softness" data-min="0" data-max="60" data-step="1" data-def="10" data-label="Softness"></div>
+        <label class="field">Keying mode
           <select id="keyMode">
-            <option value="connected">Sammenhengende bakgrunn (anbefalt)</option>
-            <option value="global">Fargen overalt i bildet</option>
+            <option value="connected">Contiguous background (recommended)</option>
+            <option value="global">Color everywhere in the image</option>
           </select>
         </label>
-        <label class="check" id="edgesWrap"><input type="checkbox" id="fromEdges" checked> Start fra bildekantene</label>
-        <div class="slider" data-key="choke" data-min="-10" data-max="10" data-step="0.5" data-def="1" data-label="Krymp / utvid kant"></div>
-        <div class="slider" data-key="feather" data-min="0" data-max="10" data-step="0.5" data-def="1" data-label="Kantutjevning"></div>
-        <label class="check"><input type="checkbox" id="defringe" checked> Fjern fargesøl i kantene</label>
-        <label class="check"><input type="checkbox" id="trim"> Beskjær tomme kanter</label>
+        <label class="check" id="edgesWrap"><input type="checkbox" id="fromEdges" checked> Start from image edges</label>
+        <div class="slider" data-key="choke" data-min="-10" data-max="10" data-step="0.5" data-def="1" data-label="Choke / expand edge"></div>
+        <div class="slider" data-key="feather" data-min="0" data-max="10" data-step="0.5" data-def="1" data-label="Feather"></div>
+        <label class="check"><input type="checkbox" id="defringe" checked> Despill (remove color fringe)</label>
+        <label class="check"><input type="checkbox" id="trim"> Trim transparent edges</label>
         <div class="sub">
-          <div class="slider" data-key="brush" data-min="1" data-max="150" data-step="1" data-def="30" data-label="Penselstørrelse"></div>
+          <div class="slider" data-key="brush" data-min="1" data-max="150" data-step="1" data-def="30" data-label="Brush size"></div>
           <div class="row">
-            <button type="button" id="btnUndoStroke">Angre strøk</button>
-            <button type="button" id="btnClearStrokes">Fjern alle strøk</button>
+            <button type="button" id="btnUndoStroke">Undo stroke</button>
+            <button type="button" id="btnClearStrokes">Clear all strokes</button>
           </div>
         </div>
       </div>
     </details>
 
     <details open id="secAdjust">
-      <summary>Farger og lys</summary>
+      <summary>Color and light</summary>
       <div class="body">
-        <h4>Lys</h4>
-        <div class="slider adj" data-key="exposure" data-min="-2" data-max="2" data-step="0.05" data-def="0" data-label="Eksponering"></div>
-        <div class="slider adj" data-key="brightness" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Lysstyrke"></div>
-        <div class="slider adj" data-key="contrast" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Kontrast"></div>
-        <div class="slider adj" data-key="highlights" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Høylys"></div>
-        <div class="slider adj" data-key="shadows" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Skygger"></div>
-        <h4>Farge</h4>
-        <div class="slider adj" data-key="temperature" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Temperatur" data-track="temp"></div>
-        <div class="slider adj" data-key="tint" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Fargestikk" data-track="tint"></div>
-        <div class="slider adj" data-key="hue" data-min="-180" data-max="180" data-step="1" data-def="0" data-label="Fargetone (hue)" data-track="hue"></div>
-        <div class="slider adj" data-key="saturation" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Metning"></div>
-        <div class="slider adj" data-key="vibrance" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Livfullhet"></div>
-        <h4>Detaljer</h4>
-        <div class="slider adj" data-key="clarity" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Klarhet"></div>
-        <div class="slider adj" data-key="sharpness" data-min="0" data-max="100" data-step="1" data-def="0" data-label="Skarphet"></div>
+        <h4>Light</h4>
+        <div class="slider adj" data-key="exposure" data-min="-2" data-max="2" data-step="0.05" data-def="0" data-label="Exposure"></div>
+        <div class="slider adj" data-key="brightness" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Brightness"></div>
+        <div class="slider adj" data-key="contrast" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Contrast"></div>
+        <div class="slider adj" data-key="highlights" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Highlights"></div>
+        <div class="slider adj" data-key="shadows" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Shadows"></div>
+        <h4>Color</h4>
+        <div class="slider adj" data-key="temperature" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Temperature" data-track="temp"></div>
+        <div class="slider adj" data-key="tint" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Tint" data-track="tint"></div>
+        <div class="slider adj" data-key="hue" data-min="-180" data-max="180" data-step="1" data-def="0" data-label="Hue" data-track="hue"></div>
+        <div class="slider adj" data-key="saturation" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Saturation"></div>
+        <div class="slider adj" data-key="vibrance" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Vibrance"></div>
+        <h4>Detail</h4>
+        <div class="slider adj" data-key="clarity" data-min="-100" data-max="100" data-step="1" data-def="0" data-label="Clarity"></div>
+        <div class="slider adj" data-key="sharpness" data-min="0" data-max="100" data-step="1" data-def="0" data-label="Sharpness"></div>
         <div class="row">
-          <button type="button" id="btnResetAdjust">Nullstill farger og lys</button>
+          <button type="button" id="btnResetAdjust">Reset color and light</button>
         </div>
-        <p class="hint">Dobbeltklikk på en glidebryter for å nullstille den.</p>
+        <p class="hint">Double-click a slider to reset it.</p>
       </div>
     </details>
 
     <details id="secSize">
-      <summary>Størrelse og oppløsning</summary>
+      <summary>Size and resolution</summary>
       <div class="body">
         <div class="size-grid">
-          <label class="field">Bredde (px)<input type="number" id="outW" min="1" max="12000"></label>
-          <button type="button" id="lockBtn" class="lock on" title="Lås forholdet mellom bredde og høyde" aria-pressed="true">Låst</button>
-          <label class="field">Høyde (px)<input type="number" id="outH" min="1" max="12000"></label>
+          <label class="field">Width (px)<input type="number" id="outW" min="1" max="12000"></label>
+          <button type="button" id="lockBtn" class="lock on" title="Lock aspect ratio" aria-pressed="true">Locked</button>
+          <label class="field">Height (px)<input type="number" id="outH" min="1" max="12000"></label>
         </div>
         <div class="row wrap">
-          <button type="button" data-pct="25">25 %</button>
-          <button type="button" data-pct="50">50 %</button>
-          <button type="button" data-pct="100">100 %</button>
-          <button type="button" data-pct="200">200 %</button>
-          <button type="button" id="btnOptimal" title="Riktig oppløsning for størrelsen bildet har på lysbildet (220 ppi). Gjør filen mindre uten synlig tap.">Optimal for lysbildet</button>
+          <button type="button" data-pct="25">25%</button>
+          <button type="button" data-pct="50">50%</button>
+          <button type="button" data-pct="100">100%</button>
+          <button type="button" data-pct="200">200%</button>
+          <button type="button" id="btnOptimal" title="The right resolution for the picture's size on the slide (220 ppi). Makes the file smaller with no visible loss.">Optimize for slide</button>
         </div>
-        <p class="hint">Skaleres med Lanczos-filter for skarpe resultater, både ned og opp. Størrelsen på lysbildet beholdes.</p>
-        <label class="field">Filformat
+        <p class="hint">Resampled with a Lanczos filter for sharp results, both down and up. The size on the slide stays the same.</p>
+        <label class="field">File format
           <select id="format">
-            <option value="auto">Automatisk (PNG ved gjennomsiktighet)</option>
+            <option value="auto">Auto (PNG when transparent)</option>
             <option value="png">PNG</option>
-            <option value="jpeg">JPG (mindre fil, ingen gjennomsiktighet)</option>
+            <option value="jpeg">JPEG (smaller file, no transparency)</option>
           </select>
         </label>
       </div>
@@ -139,15 +139,15 @@
   </main>
 
   <footer id="actions" class="actions" hidden>
-    <label class="check"><input type="checkbox" id="replace" checked> Erstatt originalbildet</label>
+    <label class="check"><input type="checkbox" id="replace" checked> Replace original picture</label>
     <div class="row">
-      <button type="button" id="btnInsert" class="primary grow">Sett inn i lysbildet</button>
-      <button type="button" id="btnDownload" title="Last ned som fil">Last ned</button>
-      <button type="button" id="btnResetAll" class="ghost" title="Tilbakestill alt">Tilbakestill</button>
+      <button type="button" id="btnInsert" class="primary grow">Insert into slide</button>
+      <button type="button" id="btnDownload" title="Save as a file">Download</button>
+      <button type="button" id="btnResetAll" class="ghost" title="Reset everything">Reset</button>
     </div>
   </footer>
 
-  <div id="busy" class="busy" hidden><div class="spinner"></div><span id="busyText">Jobber ...</span></div>
+  <div id="busy" class="busy" hidden><div class="spinner"></div><span id="busyText">Working ...</span></div>
 
   <script src="js/app.js"></script>
 </body>
