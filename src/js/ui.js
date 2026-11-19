@@ -63,5 +63,58 @@
     window.addEventListener('scroll', hide, true);
   }
 
-  global.UI = { ICONS: ICONS, setIcon: setIcon, initIcons: initIcons, initTooltips: initTooltips };
+  /* Velger for bakgrunn i forhaandsvisningen: knapp med fargeprikk og en liten meny. */
+  var BACKGROUNDS = [
+    { id: 'checker', name: 'Checkerboard (transparent)' },
+    { id: 'white', name: 'White' },
+    { id: 'black', name: 'Black' },
+    { id: 'slide', name: 'Gray' },
+    { id: 'red50', name: 'Red, 50% transparent' },
+    { id: 'purple50', name: 'Purple, 50% transparent' }
+  ];
+  var BG_CLASSES = BACKGROUNDS.map(function (b) { return 'bgv-' + b.id; });
+
+  function applyBackground(stage, id) {
+    stage.classList.remove('checker', 'bg-white', 'bg-black', 'bg-slide');
+    BG_CLASSES.forEach(function (c) { stage.classList.remove(c); });
+    stage.classList.add('bgv-' + id);
+  }
+
+  function bgPicker(button, stage) {
+    var current = 'checker';
+    try { current = localStorage.getItem('pip.bg') || 'checker'; } catch (e) { /* ikke kritisk */ }
+    if (BG_CLASSES.indexOf('bgv-' + current) < 0) current = 'checker';
+    var menu = document.createElement('div');
+    menu.className = 'bg-menu'; menu.hidden = true; menu.setAttribute('role', 'menu');
+    BACKGROUNDS.forEach(function (b) {
+      var it = document.createElement('button');
+      it.type = 'button'; it.className = 'bg-item'; it.setAttribute('role', 'menuitemradio');
+      it.dataset.tip = b.name; it.setAttribute('aria-label', b.name); it.dataset.bg = b.id;
+      it.innerHTML = '<span class="bg-dot bgv-' + b.id + '"></span>';
+      it.addEventListener('click', function (e) { e.stopPropagation(); set(b.id); menu.hidden = true; });
+      menu.appendChild(it);
+    });
+    document.body.appendChild(menu);
+    function set(id) {
+      current = id;
+      applyBackground(stage, id);
+      button.querySelector('.bg-dot').className = 'bg-dot bgv-' + id;
+      Array.prototype.forEach.call(menu.children, function (x) { x.classList.toggle('on', x.dataset.bg === id); x.setAttribute('aria-checked', String(x.dataset.bg === id)); });
+      try { localStorage.setItem('pip.bg', id); } catch (e) { /* ikke kritisk */ }
+    }
+    button.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (!menu.hidden) { menu.hidden = true; return; }
+      menu.hidden = false;
+      var r = button.getBoundingClientRect(), m = menu.getBoundingClientRect();
+      menu.style.left = Math.max(6, Math.min(window.innerWidth - m.width - 6, r.right - m.width)) + 'px';
+      menu.style.top = (r.bottom + 4 + m.height > window.innerHeight ? r.top - m.height - 4 : r.bottom + 4) + 'px';
+    });
+    document.addEventListener('click', function () { menu.hidden = true; });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') menu.hidden = true; });
+    set(current);
+    return { set: set };
+  }
+
+  global.UI = { bgPicker: bgPicker, ICONS: ICONS, setIcon: setIcon, initIcons: initIcons, initTooltips: initTooltips };
 })(window);

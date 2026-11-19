@@ -1209,11 +1209,7 @@
     cmp.addEventListener('pointerdown', on);
     cmp.addEventListener('pointerup', off);
     cmp.addEventListener('pointerleave', off);
-    $('bgSelect').addEventListener('change', function (e) {
-      var st = $('stage');
-      st.classList.remove('checker', 'bg-white', 'bg-black', 'bg-slide');
-      st.classList.add(e.target.value === 'checker' ? 'checker' : 'bg-' + e.target.value);
-    });
+    UI.bgPicker($('bgSelect'), $('stage'));
 
     $('btnAuto').addEventListener('click', function () {
       if (!S.src) return;

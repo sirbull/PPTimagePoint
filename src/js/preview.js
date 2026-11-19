@@ -154,11 +154,7 @@
     var off = function () { if (compare) { compare = false; draw(); } };
     cmp.addEventListener('pointerup', off);
     cmp.addEventListener('pointerleave', off);
-    $('pvBg').addEventListener('change', function (e) {
-      var st = $('pvStage');
-      st.classList.remove('checker', 'bg-white', 'bg-black', 'bg-slide');
-      st.classList.add(e.target.value === 'checker' ? 'checker' : 'bg-' + e.target.value);
-    });
+    UI.bgPicker($('pvBg'), $('pvStage'));
     $('pvUndo').addEventListener('click', function () { send({ t: 'undo' }); });
     $('pvRedo').addEventListener('click', function () { send({ t: 'redo' }); });
     $('pvClose').addEventListener('click', function () { send({ t: 'close' }); });
