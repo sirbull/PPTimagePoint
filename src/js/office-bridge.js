@@ -144,6 +144,30 @@
         opts.imageWidth = placement.width;
         opts.imageHeight = placement.height;
       }
+      var canRun = Bridge.supports('1.3') && global.PowerPoint;
+
+      // Hvilke figurer ligger paa lysbildet foer innsetting? Da finner vi det nye bildet sikkert etterpaa.
+      var before = null, slideId = replaceMeta && replaceMeta.slideId;
+      if (canRun) {
+        try {
+          before = await PowerPoint.run(async function (ctx) {
+            if (!slideId && Bridge.supports('1.5')) {
+              var sl = ctx.presentation.getSelectedSlides();
+              sl.load('items/id');
+              await ctx.sync();
+              slideId = sl.items.length ? sl.items[0].id : null;
+            }
+            if (!slideId) return null;
+            var shapes = ctx.presentation.slides.getItem(slideId).shapes;
+            shapes.load('items/id');
+            await ctx.sync();
+            var ids = {};
+            shapes.items.forEach(function (x) { ids[x.id] = true; });
+            return ids;
+          });
+        } catch (e) { before = null; }
+      }
+
       await new Promise(function (resolve, reject) {
         Office.context.document.setSelectedDataAsync(base64, opts, function (res) {
           if (res.status === Office.AsyncResultStatus.Succeeded) resolve();
@@ -151,41 +175,47 @@
         });
       });
 
-      var newMeta = null;
-      if (Bridge.supports('1.5') && global.PowerPoint) {
-        try {
-          newMeta = await PowerPoint.run(async function (ctx) {
-            var deleted = false;
-            if (replaceMeta && replaceMeta.slideId && replaceMeta.shapeId && Bridge.supports('1.3')) {
-              var slide = ctx.presentation.slides.getItem(replaceMeta.slideId);
-              var old = slide.shapes.getItemOrNullObject(replaceMeta.shapeId);
-              await ctx.sync();
-              if (!old.isNullObject) { old.delete(); deleted = true; }
-            }
+      if (!canRun) return { deleted: false, meta: null };
+      try {
+        return await PowerPoint.run(async function (ctx) {
+          var s = null, sid = slideId;
+          // 1. Ny bildefigur paa lysbildet som ikke fantes foer
+          if (before && sid) {
+            var shapes = ctx.presentation.slides.getItem(sid).shapes;
+            shapes.load('items/id,items/name,items/type,items/left,items/top,items/width,items/height');
+            await ctx.sync();
+            var fresh = shapes.items.filter(function (x) { return x.type === 'Image' && !before[x.id]; });
+            s = fresh.length ? fresh[fresh.length - 1] : null;
+          }
+          // 2. Ellers: det som er markert etter innsetting
+          if (!s && Bridge.supports('1.5')) {
             var sel = ctx.presentation.getSelectedShapes();
             sel.load('items/id,items/name,items/type,items/left,items/top,items/width,items/height');
             var slides = ctx.presentation.getSelectedSlides();
             slides.load('items/id');
             await ctx.sync();
-            var s = sel.items.filter(function (x) { return x.type === 'Image' && x.id !== (replaceMeta && replaceMeta.shapeId); })[0];
-            if (s && replaceMeta && replaceMeta.name && Bridge.supports('1.4')) {
-              try { s.name = replaceMeta.name; await ctx.sync(); } catch (e) { /* navn er ikke viktig */ }
-            }
-            if (!s) return { deleted: deleted, meta: null };
-            if (sessionId) await writeTag(ctx, s, sessionId);
-            return {
-              deleted: deleted,
-              meta: {
-                slideId: slides.items.length ? slides.items[0].id : null, shapeId: s.id, name: s.name,
-                left: s.left, top: s.top, width: s.width, height: s.height
-              }
-            };
-          });
-        } catch (e) {
-          newMeta = { deleted: false, meta: null, error: e };
-        }
+            s = sel.items.filter(function (x) { return x.type === 'Image' && x.id !== (replaceMeta && replaceMeta.shapeId); })[0] || null;
+            if (slides.items.length) sid = slides.items[0].id;
+          }
+          var deleted = false;
+          if (replaceMeta && replaceMeta.slideId && replaceMeta.shapeId && (!s || s.id !== replaceMeta.shapeId)) {
+            var old = ctx.presentation.slides.getItem(replaceMeta.slideId).shapes.getItemOrNullObject(replaceMeta.shapeId);
+            await ctx.sync();
+            if (!old.isNullObject) { old.delete(); await ctx.sync(); deleted = true; }
+          }
+          if (!s) return { deleted: deleted, meta: null };
+          if (replaceMeta && replaceMeta.name && Bridge.supports('1.4')) {
+            try { s.name = replaceMeta.name; await ctx.sync(); } catch (e) { /* navn er ikke viktig */ }
+          }
+          if (sessionId) await writeTag(ctx, s, sessionId);
+          return {
+            deleted: deleted,
+            meta: { slideId: sid, shapeId: s.id, name: s.name, left: s.left, top: s.top, width: s.width, height: s.height }
+          };
+        });
+      } catch (e) {
+        return { deleted: false, meta: null, error: e };
       }
-      return newMeta || { deleted: false, meta: null };
     }
   };
 

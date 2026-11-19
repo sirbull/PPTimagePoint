@@ -41,8 +41,8 @@ const officeMock = (pptxB64) => {
   const withTags = (s) => {
     if (!s.tagMap) s.tagMap = {};
     Object.defineProperty(s, 'tags', { configurable: true, enumerable: false, value: {
-      getItemOrNullObject: (k) => ({ isNullObject: !(k in s.tagMap), value: s.tagMap[k], load() {} }),
-      add: (k, v) => { s.tagMap[k] = v; persist(); },
+      getItemOrNullObject: (k) => ({ isNullObject: window.__noTags || !(k in s.tagMap), value: s.tagMap[k], load() {} }),
+      add: (k, v) => { if (!window.__noTags) s.tagMap[k] = v; persist(); },
     } });
     return s;
   };
@@ -56,14 +56,40 @@ const officeMock = (pptxB64) => {
   };
   window.__select = (id) => { selected = id; persist(); window.__selHandler && window.__selHandler({}); };
   const coll = (items) => ({ items, load() {} });
+  // Eksport av lysbildet: bygger en pptx der bildet er det som faktisk ligger paa lysbildet
+  const tasks = [];
+  const exportSlide = () => {
+    const out = { value: null };
+    tasks.push(async () => {
+      const sel = shapes.find((x) => x.id === selected);
+      if (!sel || !sel.data) { out.value = pptxB64; return; }
+      const zip = await JSZip.loadAsync(pptxB64, { base64: true });
+      const slide = Object.keys(zip.files).find((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f));
+      const xml = await zip.file(slide).async('string');
+      // finn bildefilen til figuren med samme navn, og bytt den ut
+      const doc = new DOMParser().parseFromString(xml, 'application/xml');
+      const pic = [...doc.getElementsByTagNameNS('http://schemas.openxmlformats.org/presentationml/2006/main', 'pic')]
+        .find((p) => p.getElementsByTagNameNS('http://schemas.openxmlformats.org/presentationml/2006/main', 'cNvPr')[0].getAttribute('name') === sel.name);
+      const blip = pic.getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'blip')[0];
+      const rid = blip.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'embed');
+      const rels = await zip.file(slide.replace('slides/', 'slides/_rels/') + '.rels').async('string');
+      const target = new RegExp('Id="' + rid + '"[^>]*Target="\\.\\./media/([^"]+)"').exec(rels) || new RegExp('Target="\\.\\./media/([^"]+)"[^>]*Id="' + rid + '"').exec(rels);
+      zip.file('ppt/media/' + target[1], sel.data, { base64: true });
+      const sr = pic.getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'srcRect')[0];
+      if (sr) sr.parentNode.removeChild(sr);
+      zip.file(slide, new XMLSerializer().serializeToString(doc));
+      out.value = await zip.generateAsync({ type: 'base64' });
+    });
+    return out;
+  };
   const ctx = {
-    sync: async () => {},
+    sync: async () => { while (tasks.length) await tasks.shift()(); },
     presentation: {
       getSelectedShapes: () => coll(shapes.filter((s) => s.id === selected).map(withTags)),
-      getSelectedSlides: () => coll([{ id: '256#', exportAsBase64: () => ({ value: pptxB64 }) }]),
+      getSelectedSlides: () => coll([{ id: '256#', exportAsBase64: exportSlide }]),
       slides: { getItem: () => ({
-        exportAsBase64: () => ({ value: pptxB64 }),
-        shapes: { getItemOrNullObject: (id) => {
+        exportAsBase64: exportSlide,
+        shapes: { get items() { return shapes.map(withTags); }, load() {}, getItemOrNullObject: (id) => {
           const s = shapes.find((x) => x.id === id);
           return Object.assign({}, s || {}, { isNullObject: !s, load() {}, delete() { (window.__trash = window.__trash || []).push(s); shapes.splice(shapes.indexOf(s), 1); window.__log.push({ op: 'delete', id }); persist(); } });
         } },
@@ -83,8 +109,8 @@ const officeMock = (pptxB64) => {
         setSelectedDataAsync(data, opts, cb) {
           window.__log.push({ op: 'insert', data, opts });
           const id = String(100 + window.__log.length);
-          shapes.push({ id, name: 'Picture ' + id, type: 'Image', left: opts.imageLeft, top: opts.imageTop, width: opts.imageWidth, height: opts.imageHeight });
-          selected = id;
+          shapes.push({ id, name: 'Picture ' + id, type: 'Image', left: opts.imageLeft, top: opts.imageTop, width: opts.imageWidth, height: opts.imageHeight, data });
+          if (!window.__noSelectAfterInsert) selected = id;
           persist();
           cb({ status: 'succeeded' });
         },
@@ -460,6 +486,41 @@ async function decodeB64Png(page, b64) {
     check(await page.evaluate(() => window.__log.filter((l) => l.op === 'delete')[2].id === '101'), 'ny justering erstatter bildet som faktisk ligger på lysbildet');
     a = await page.evaluate(() => [window.__pip.S.adjust.hue, window.__pip.S.adjust.vibrance]);
     check(a[0] === 40 && a[1] === 30, 'og beholder innstillingene fra den versjonen ' + a);
+    check(errors.length === 0, 'ingen JS-feil ' + errors.join(' | '));
+    await page.close();
+  }
+
+  /* ---- 9. Uten merker og uten markering etter innsetting (verste tilfelle) ---- */
+  console.log('Test 9: kjenner igjen bildet på innholdet, og Reset virker');
+  {
+    const page = await browser.newPage({ viewport: { width: 360, height: 900 } });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.route('**/appsforoffice.microsoft.com/**', (r) => r.fulfill({ body: '', contentType: 'text/javascript' }));
+    await page.addInitScript(() => { window.__persistMock = true; window.__noTags = true; window.__noSelectAfterInsert = true; window.__initialSelection = '2'; });
+    await page.addInitScript(officeMock, pptxB64);
+    await page.goto(base + '/src/taskpane.html');
+    await page.waitForSelector('#stage:not([hidden])');
+    const box = await page.locator('#view').boundingBox();
+    await page.mouse.click(box.x + 4, box.y + 4);
+    await page.waitForFunction(() => window.__log.some((l) => l.op === 'delete'), null, { timeout: 10000 });
+    await page.waitForTimeout(600);
+    check(await page.evaluate(() => window.__pip.S.src.meta && window.__pip.S.src.meta.shapeId === '101'), 'finner det nye bildet uten å lese markeringen');
+    // Brukeren klikker paa det nye bildet, og panelet lastes paa nytt (f.eks. av Utforming)
+    await page.evaluate(() => window.__select('101'));
+    await page.reload();
+    await page.waitForSelector('#stage:not([hidden])');
+    await page.waitForTimeout(400);
+    const r = await page.evaluate(() => ({ key: window.__pip.S.key.enabled, st: document.getElementById('status').textContent }));
+    check(r.key === true && /restored/.test(r.st), 'kjenner igjen sitt eget bilde på innholdet ' + JSON.stringify(r));
+    await page.click('#btnResetAll');
+    await page.waitForFunction(() => window.__log.filter((l) => l.op === 'delete').length === 2, null, { timeout: 10000 });
+    const last = await page.evaluate(() => window.__log.filter((l) => l.op === 'insert').pop());
+    const orig = fs.readFileSync(path.join(__dirname, 'fixtures/white.png')).toString('base64');
+    const sh = await page.evaluate(() => window.__shapes.map((x) => x.id));
+    check(last.opts.imageLeft === 36 && last.opts.imageWidth === 144, 'Reset legger originalen på opprinnelig plass');
+    check(await page.evaluate((o) => window.__shapes.find((x) => x.data === o) !== undefined, orig) && sh.length === 2, 'originalfilen ligger på lysbildet, og den redigerte er borte ' + sh);
+    check(/back to the original/.test(await page.locator('#status').textContent()), 'melding om at originalen er tilbake');
     check(errors.length === 0, 'ingen JS-feil ' + errors.join(' | '));
     await page.close();
   }

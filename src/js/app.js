@@ -149,10 +149,24 @@
     await busy(true, 'Getting the image from PowerPoint ...');
     try {
       var pic = await Bridge.getSelectedImage();
-      var tag = parseTag(pic.meta && pic.meta.sessionId);
+      var hash = await hashBytes(pic.bytes);
+      // Kjenner vi igjen bildet? Foerst paa innholdet, saa paa det usynlige merket.
+      var known = await Store.get('h:' + hash);
+      var tag = known ? { sid: known.sid, v: known.v } : parseTag(pic.meta && pic.meta.sessionId);
+      if (tag && S.src && tag.sid === S.src.sessionId && S.src.versions[tag.v] && pic.meta) {
+        // Et av panelets egne bilder (f.eks. etter angring i PowerPoint): bare bytt versjon
+        if (!S.src.meta) S.src.meta = Object.assign({}, pic.meta);
+        S.src.meta.slideId = pic.meta.slideId;
+        useVersion(tag.v, S.src.versions[tag.v], pic.meta.shapeId);
+        S.src.slideChanged = tag.v !== 0 || S.src.slideChanged;
+        return;
+      }
       var rec = tag ? await Store.get(tag.sid) : null;
       if (rec && rec.versions) await restoreSession(rec, pic, tag.v);
-      else await loadBlob(new Blob([pic.bytes], { type: pic.mime }), pic);
+      else {
+        await loadBlob(new Blob([pic.bytes], { type: pic.mime }), pic);
+        S.src.origHash = hash;
+      }
     } catch (e) {
       status(e.message || String(e), 'err');
     } finally {
@@ -202,16 +216,42 @@
       put: async function (rec) {
         mem[rec.id] = rec;
         await tx('readwrite', function (st) { return st.put(rec); });
-        // behold bare de 30 nyeste
-        var all = await tx('readonly', function (st) { return st.getAll(); });
-        if (all && all.length > 30) {
-          all.sort(function (a, b) { return a.savedAt - b.savedAt; });
-          var old = all.slice(0, all.length - 30);
-          await tx('readwrite', function (st) { old.forEach(function (o) { st.delete(o.id); }); });
+        // behold de 30 nyeste oektene og de 800 nyeste fingeravtrykkene
+        var keys = await tx('readonly', function (st) { return st.getAllKeys(); });
+        if (!keys) return;
+        var sessions = keys.filter(function (k) { return String(k).indexOf('pip-') === 0; });
+        var hashes = keys.filter(function (k) { return String(k).indexOf('h:') === 0; });
+        var drop = [];
+        // id-ene for oekter starter med tidsstempel, saa sortering gir eldste foerst
+        if (sessions.length > 30) drop = drop.concat(sessions.sort().slice(0, sessions.length - 30));
+        if (hashes.length > 800) {
+          var all = await tx('readonly', function (st) { return st.getAll(IDBKeyRange.bound('h:', 'h:\uffff')); });
+          (all || []).sort(function (a, b) { return a.savedAt - b.savedAt; })
+            .slice(0, hashes.length - 800).forEach(function (o) { drop.push(o.id); });
         }
+        if (drop.length) await tx('readwrite', function (st) { drop.forEach(function (id) { st.delete(id); }); });
       }
     };
   })();
+
+  /** Fingeravtrykk av en bildefil, slik at panelet kjenner igjen sine egne bilder. */
+  async function hashBytes(data) {
+    var u8 = data instanceof Uint8Array ? data : new Uint8Array(data);
+    try {
+      if (window.crypto && crypto.subtle) {
+        var d = new Uint8Array(await crypto.subtle.digest('SHA-256', u8));
+        return Array.prototype.map.call(d.subarray(0, 16), function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+      }
+    } catch (e) { /* faller tilbake under */ }
+    var h1 = 0x811c9dc5, h2 = 0x01000193;
+    for (var i = 0; i < u8.length; i++) { h1 = Math.imul(h1 ^ u8[i], 16777619) >>> 0; h2 = Math.imul(h2 + u8[i], 2246822519) >>> 0; }
+    return 'f' + h1.toString(16) + h2.toString(16) + u8.length.toString(16);
+  }
+
+  function rememberHash(hash, sid, v) {
+    if (!hash) return;
+    Store.put({ id: 'h:' + hash, sid: sid, v: v, savedAt: Date.now() }).catch(function () { /* ikke kritisk */ });
+  }
 
   function newSessionId() {
     return 'pip-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
@@ -226,6 +266,7 @@
       hist: { past: hist.past.slice(-100), future: hist.future.slice() }
     };
     Store.put(rec).catch(function () { /* ikke kritisk */ });
+    if (src.origHash && !src.origHashSaved) { src.origHashSaved = true; rememberHash(src.origHash, src.sessionId, 0); }
   }
 
   async function restoreSession(rec, pic, version) {
@@ -552,6 +593,7 @@
         // Husk hvilke innstillinger denne versjonen paa lysbildet har (for Ctrl+Z i PowerPoint)
         S.src.currentVersion = version;
         S.src.versions[version] = versionRecord(snap);
+        rememberHash(await hashBytes(await enc.blob.arrayBuffer()), S.src.sessionId, version);
         trimVersions();
         saveSession();
       }
@@ -587,8 +629,14 @@
     S.crop = { x: 0, y: 0, w: F.width, h: F.height };
     cache = {};
     syncUI(); render();
-    if (Bridge.available && S.src.meta && S.src.origMeta && S.src.slideChanged) {
+    if (Bridge.available && S.src.origMeta && (S.src.slideChanged || S.src.currentVersion !== 0)) {
       var om = S.src.origMeta;
+      if (!S.src.meta) {
+        // Mistet sporet av bildet paa lysbildet: bruk det som er markert, ellers sett inn ved siden av
+        var sel = null;
+        try { sel = await Bridge.getSelectedImageId(); } catch (e) { sel = null; }
+        S.src.meta = Object.assign({}, om, { shapeId: sel ? sel.id : null });
+      }
       S.src.meta = Object.assign({}, S.src.meta, { left: om.left, top: om.top, width: om.width, height: om.height });
       live_.running = true;
       try { await applyToSlide(false, { original: true }); } finally { live_.running = false; }
