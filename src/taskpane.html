@@ -52,7 +52,11 @@
         <option value="slide">Gray</option>
       </select>
     </div>
-    <div id="info" class="info muted" hidden></div>
+    <p id="previewHint" class="hint" hidden>Preview is hidden. Check the result on the slide (Live update), and use "Auto detect background" or show the preview to pick colors and use the brush.</p>
+    <div id="infoRow" class="info-row" hidden>
+      <span id="info" class="info muted"></span>
+      <button type="button" id="btnTogglePreview" class="linkbtn">Hide preview</button>
+    </div>
   </section>
 
   <main id="panels" hidden>

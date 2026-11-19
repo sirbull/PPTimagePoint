@@ -113,6 +113,12 @@
     S.adjust = Object.assign({}, Ops.DEFAULT_ADJUST);
     S.trim = false;
     S.out = { w: full.width, h: full.height, lock: true };
+    // Beskjaering fra PowerPoint (i pikselkoordinater) og hva som sist ble lagt paa lysbildet
+    S.crop = { x: 0, y: 0, w: full.width, h: full.height };
+    S.slideSync = S.src.meta ? {
+      rect: { x: 0, y: 0, w: full.width, h: full.height },
+      geom: { left: S.src.meta.left, top: S.src.meta.top, width: S.src.meta.width, height: S.src.meta.height }
+    } : null;
     cache = {};
     live_.applied = editKey(); live_.lastKey = live_.applied;
     resetHistory();
@@ -121,7 +127,8 @@
     var view = $('view');
     view.width = proxy.width; view.height = proxy.height;
     $('empty').hidden = true;
-    ['stage', 'toolbar', 'info', 'panels', 'actions'].forEach(function (id) { $(id).hidden = false; });
+    ['stage', 'toolbar', 'infoRow', 'panels', 'actions'].forEach(function (id) { $(id).hidden = false; });
+    applyPreviewPref();
     syncUI();
     render();
     var msg = 'Image loaded (' + W + ' × ' + H + ' px).';
@@ -232,7 +239,26 @@
     cache.preview = out;
     ctx.clearRect(0, 0, P.width, P.height);
     ctx.putImageData(out, 0, 0);
+    drawCropOverlay(ctx, P);
     updateInfo();
+  }
+
+  /** Demper omraadet som er beskaaret bort i PowerPoint. */
+  function drawCropOverlay(ctx, P) {
+    var F = S.src.full, c = S.crop;
+    if (!c || (!c.x && !c.y && c.w === F.width && c.h === F.height)) return;
+    var k = P.width / F.width;
+    var x0 = c.x * k, y0 = c.y * k, x1 = (c.x + c.w) * k, y1 = (c.y + c.h) * k;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, P.width, y0);
+    ctx.fillRect(0, y1, P.width, P.height - y1);
+    ctx.fillRect(0, y0, x0, y1 - y0);
+    ctx.fillRect(x1, y0, P.width - x1, y1 - y0);
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(x0 + 0.5, y0 + 0.5, x1 - x0 - 1, y1 - y0 - 1);
+    ctx.restore();
   }
 
   function trimRectFor(img) {
@@ -248,9 +274,11 @@
     var adjusted = Ops.adjust(F, S.adjust, scaleOf(F));
     var alpha = buildAlpha(F, false);
     var out = finalize(adjusted, alpha);
-    var rect = { x: 0, y: 0, w: F.width, h: F.height };
+    var c = S.crop || { x: 0, y: 0, w: F.width, h: F.height };
+    if (c.x || c.y || c.w !== F.width || c.h !== F.height) out = Ops.crop(out, c);
+    var rect = { x: c.x, y: c.y, w: c.w, h: c.h };
     var tr = trimRectFor(out);
-    if (tr) { out = Ops.crop(out, tr); rect = tr; }
+    if (tr) { out = Ops.crop(out, tr); rect = { x: c.x + tr.x, y: c.y + tr.y, w: tr.w, h: tr.h }; }
     var factor = S.out.w / F.width;
     var nw = Math.max(1, Math.round(rect.w * factor));
     var nh = Math.max(1, Math.round(rect.h * (S.out.h / F.height)));
@@ -285,6 +313,38 @@
   }
 
   /**
+   * Leser av om bildet er flyttet, skalert eller beskaaret i PowerPoint siden
+   * sist, og tar det med videre. Returnerer false hvis bildet er slettet.
+   */
+  async function syncFromSlide() {
+    var m = S.src.meta, sync = S.slideSync;
+    if (!m || !sync) return true;
+    var g;
+    try { g = await Bridge.getShapeGeometry(m); } catch (e) { return true; }
+    if (g === undefined) return true;
+    if (g === null) return false;
+    var same = ['left', 'top', 'width', 'height'].every(function (k) { return Math.abs(g[k] - sync.geom[k]) < 0.05; });
+    if (same) return true;
+    var c = { l: 0, t: 0, r: 0, b: 0 };
+    try { c = (await Bridge.getShapeCrop(m)) || c; } catch (e) { /* uten beskjaering: bare flyttet/skalert */ }
+    var R = sync.rect;
+    var cx = R.x + c.l * R.w, cy = R.y + c.t * R.h;
+    var cw = R.w * (1 - c.l - c.r), ch = R.h * (1 - c.t - c.b);
+    if (cw < 1 || ch < 1) return true;
+    var F = S.src.full;
+    var sx = g.width / cw, sy = g.height / ch;
+    // Rammen for hele kildebildet slik det ville ligget paa lysbildet
+    m.left = g.left - cx * sx; m.top = g.top - cy * sy;
+    m.width = F.width * sx; m.height = F.height * sy;
+    var x0 = Math.max(0, Math.round(cx)), y0 = Math.max(0, Math.round(cy));
+    var x1 = Math.min(F.width, Math.round(cx + cw)), y1 = Math.min(F.height, Math.round(cy + ch));
+    S.crop = { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
+    S.slideSync = { rect: { x: cx, y: cy, w: cw, h: ch }, geom: g };
+    render();
+    return true;
+  }
+
+  /**
    * Behandler bildet i full opploesning og legger det paa lysbildet.
    * live = true: stille oppdatering i bakgrunnen (ingen sperre av panelet).
    */
@@ -296,6 +356,17 @@
     if (!live) await busy(true, 'Processing at full resolution ...');
     else setLiveState('Updating slide ...');
     try {
+      if (Bridge.available && S.src.meta) {
+        var present = await syncFromSlide();
+        if (!present) {
+          S.src.meta = null; S.slideSync = null;
+          if (live) {
+            live_.on = false; $('live').checked = false; syncLiveUI(); setLiveState('');
+            status('The picture was removed from the slide. Live update is turned off.', 'err');
+            return;
+          }
+        }
+      }
       var res = renderFull();
       var enc = await encode(res.image);
       if (!Bridge.available) { download(enc); return; }
@@ -303,6 +374,10 @@
       var b64 = await blobToBase64(enc.blob);
       var replace = (live || $('replace').checked) && S.src.meta;
       var r = await Bridge.insertImage(b64, placementFor(res.rect), replace ? S.src.meta : null);
+      S.slideSync = r && r.meta ? {
+        rect: res.rect,
+        geom: { left: r.meta.left, top: r.meta.top, width: r.meta.width, height: r.meta.height }
+      } : null;
       if (r && r.meta) {
         // Videre arbeid gjelder det nye bildet, men vi beholder originalpikslene i panelet
         S.src.meta = Object.assign({}, r.meta, {
@@ -401,6 +476,31 @@
     var dirty = S.src && snapshotKey() !== hist.committed;
     $('btnUndo').disabled = !S.src || (!hist.past.length && !dirty);
     $('btnRedo').disabled = !S.src || !hist.future.length;
+  }
+
+  /* ---------------- Skjul forhaandsvisning ---------------- */
+
+  var previewHidden = false;
+  try { previewHidden = localStorage.getItem('pip.hidePreview') === '1'; } catch (e) { /* ikke kritisk */ }
+
+  function applyPreviewPref() {
+    var hasImg = !!S.src;
+    $('stage').hidden = !hasImg || previewHidden;
+    document.querySelector('.seg').hidden = previewHidden;
+    $('btnCompare').hidden = previewHidden;
+    $('bgSelect').hidden = previewHidden;
+    $('previewHint').hidden = !hasImg || !previewHidden;
+    $('btnTogglePreview').textContent = previewHidden ? 'Show preview' : 'Hide preview';
+  }
+
+  function bindPreviewToggle() {
+    $('btnTogglePreview').addEventListener('click', function () {
+      previewHidden = !previewHidden;
+      try { localStorage.setItem('pip.hidePreview', previewHidden ? '1' : '0'); } catch (e) { /* ikke kritisk */ }
+      if (previewHidden) setTool('pick');
+      applyPreviewPref();
+      updateCursorSize();
+    });
   }
 
   function bindHistory() {
@@ -544,8 +644,10 @@
   function updateInfo() {
     if (!S.src) return;
     var F = S.src.full;
-    var txt = 'Original: ' + F.width + ' × ' + F.height + ' px';
-    var w = S.out.w, h = S.out.h;
+    var txt = 'Original ' + F.width + ' × ' + F.height + ' px.';
+    var c = S.crop || { w: F.width, h: F.height };
+    var w = Math.round(S.out.w * c.w / F.width), h = Math.round(S.out.h * c.h / F.height);
+    if (c.w !== F.width || c.h !== F.height) txt += ' Cropped in PowerPoint.';
     if (S.trim && cache.preview) {
       var r = Ops.opaqueBounds(cache.preview, 8);
       if (r) {
@@ -553,7 +655,7 @@
         w = Math.round(r.w / P.width * S.out.w); h = Math.round(r.h / P.height * S.out.h);
       }
     }
-    txt += '   Output: approx. ' + w + ' × ' + h + ' px';
+    txt += ' Output approx. ' + w + ' × ' + h + ' px.';
     $('info').textContent = txt;
   }
 
@@ -751,6 +853,7 @@
     bindControls();
     bindStage();
     bindHistory();
+    bindPreviewToggle();
     var inPPT = await Bridge.init();
     if (!inPPT) {
       $('btnGet').hidden = true;

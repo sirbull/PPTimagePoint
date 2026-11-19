@@ -47,6 +47,29 @@
       });
     },
 
+    /** Plassering og stoerrelse (punkter) for en figur, eller null hvis den er slettet. */
+    getShapeGeometry: async function (meta) {
+      if (!Bridge.available || !global.PowerPoint || !Bridge.supports('1.3')) return undefined;
+      return PowerPoint.run(async function (ctx) {
+        var sh = ctx.presentation.slides.getItem(meta.slideId).shapes.getItemOrNullObject(meta.shapeId);
+        sh.load('left,top,width,height');
+        await ctx.sync();
+        if (sh.isNullObject) return null;
+        return { left: sh.left, top: sh.top, width: sh.width, height: sh.height };
+      });
+    },
+
+    /** Beskjaeringen (andeler l/t/r/b) som er satt paa bildet i PowerPoint. */
+    getShapeCrop: async function (meta) {
+      if (!Bridge.available || !global.PowerPoint || !Bridge.supports('1.8')) return null;
+      return PowerPoint.run(async function (ctx) {
+        var exported = ctx.presentation.slides.getItem(meta.slideId).exportAsBase64();
+        await ctx.sync();
+        var info = await PptxExtract.extractPicture(exported.value, { id: meta.shapeId, name: meta.name, infoOnly: true });
+        return info.crop;
+      });
+    },
+
     /**
      * Henter markert bilde. Returnerer { bytes, mime, crop, name, meta }.
      * meta beskriver plassering paa lysbildet (punkter) for aa kunne erstatte.

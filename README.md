@@ -27,6 +27,18 @@ Alt skjer lokalt i PowerPoint. Ingen bilder sendes til noen server.
    * **Ctrl+Z** angrer og **Ctrl+Y** gjør om (eller knappene **Undo** og **Redo**). Snarveiene virker når panelet har fokus. Står markøren i lysbildet, går Ctrl+Z til PowerPoint i stedet.
 5. Med **Live update on slide** (på som standard) oppdateres bildet på lysbildet automatisk et øyeblikk etter at du slipper en glidebryter eller penselen. Slår du det av, bruker du **Insert into slide** når du er ferdig.
 
+### Beskjære, flytte og skalere
+
+Bruk PowerPoints egne verktøy (Bildeformat > Beskjær, eller dra i hjørnene). Panelet leser av endringene neste gang det oppdaterer bildet, så beskjæring, plassering og størrelse beholdes. Det som er beskåret bort vises mørkt i forhåndsvisningen.
+
+### Skjule forhåndsvisningen
+
+Med **Hide preview** under forhåndsvisningen jobber du bare mot lysbildet (med Live påslått). Pipetten og penselen trenger forhåndsvisningen, fordi PowerPoint ikke lar tillegg ta imot klikk på selve lysbildet. Valget huskes.
+
+### Designforslag (Designer) dukker opp
+
+PowerPoint Designer foreslår oppsett hver gang et bilde settes inn, og live-oppdatering setter inn bildet på nytt. Slå det av under **Fil > Alternativer > Generelt > PowerPoint Designer**, og fjern haken for å vise designideer automatisk. På Mac: **PowerPoint > Innstillinger > Generelt**.
+
 ### Om live-oppdatering
 
 PowerPoint lar ikke tillegg tegne direkte i et bilde, så live-oppdatering betyr at bildet på lysbildet byttes ut med en ny versjon i full oppløsning. Det har tre følger:

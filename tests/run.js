@@ -30,6 +30,7 @@ const officeMock = (pptxB64) => {
     { id: '2', name: 'Picture 1', type: 'Image', left: 36, top: 36, width: 144, height: 144 },
     { id: '3', name: 'Testbilde', type: 'Image', left: 216, top: 72, width: 360, height: 225 },
   ];
+  window.__shapes = shapes;
   let selected = window.__initialSelection || '3';
   window.__select = (id) => { selected = id; window.__selHandler && window.__selHandler({}); };
   const coll = (items) => ({ items, load() {} });
@@ -38,10 +39,13 @@ const officeMock = (pptxB64) => {
     presentation: {
       getSelectedShapes: () => coll(shapes.filter((s) => s.id === selected)),
       getSelectedSlides: () => coll([{ id: '256#', exportAsBase64: () => ({ value: pptxB64 }) }]),
-      slides: { getItem: () => ({ shapes: { getItemOrNullObject: (id) => {
-        const s = shapes.find((x) => x.id === id);
-        return { isNullObject: !s, delete() { shapes.splice(shapes.indexOf(s), 1); window.__log.push({ op: 'delete', id }); } };
-      } } }) },
+      slides: { getItem: () => ({
+        exportAsBase64: () => ({ value: pptxB64 }),
+        shapes: { getItemOrNullObject: (id) => {
+          const s = shapes.find((x) => x.id === id);
+          return Object.assign({}, s || {}, { isNullObject: !s, load() {}, delete() { shapes.splice(shapes.indexOf(s), 1); window.__log.push({ op: 'delete', id }); } });
+        } },
+      }) },
     },
   };
   window.PowerPoint = { run: (fn) => fn(ctx) };
@@ -260,6 +264,56 @@ async function decodeB64Png(page, b64) {
     check(dims[0] === 900 && dims[1] === 900, 'bytter til nytt markert bilde (' + dims + ')');
     check(await page.evaluate(() => window.__pip.S.adjust.hue === 0 && window.__pip.S.adjust.saturation === 0), 'nytt bilde starter med nullstilte justeringer');
     await page.screenshot({ path: path.join(SHOTS, 'live.png') });
+    check(errors.length === 0, 'ingen JS-feil ' + errors.join(' | '));
+    await page.close();
+  }
+
+  /* ---- 5. Beskjaering og flytting i PowerPoint, skjult forhaandsvisning ---- */
+  console.log('Test 5: beskjæring i PowerPoint følges, forhåndsvisning kan skjules');
+  {
+    const page = await browser.newPage({ viewport: { width: 360, height: 900 } });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.route('**/appsforoffice.microsoft.com/**', (r) => r.fulfill({ body: '', contentType: 'text/javascript' }));
+    await page.addInitScript(officeMock, pptxB64);
+    await page.goto(base + '/src/taskpane.html');
+    await page.waitForSelector('#stage:not([hidden])');
+    // Brukeren beskjaerer 25 % fra venstre med PowerPoints verktoey: figuren blir smalere og flytter seg
+    await page.evaluate(() => {
+      const sh = window.__shapes.find((x) => x.id === '3');
+      sh.left += sh.width * 0.25; sh.width *= 0.75;
+      window.Bridge.getShapeCrop = async () => ({ l: 0.25, t: 0, r: 0, b: 0 });
+      const i = document.getElementById('sl-saturation'); i.value = 30; i.dispatchEvent(new Event('input'));
+    });
+    await page.waitForFunction(() => window.__log.some((l) => l.op === 'delete'), null, { timeout: 10000 });
+    const ins = await page.evaluate(() => window.__log.find((l) => l.op === 'insert'));
+    check(Math.abs(ins.opts.imageLeft - 306) < 0.01 && Math.abs(ins.opts.imageWidth - 270) < 0.01 && Math.abs(ins.opts.imageHeight - 225) < 0.01,
+      'beskjæringen beholdes ved live-oppdatering ' + JSON.stringify(ins.opts));
+    const png = await decodeB64Png(page, ins.data);
+    check(png.w === 600 && png.h === 1000, 'bare det beskårne området legges inn (' + png.w + 'x' + png.h + ')');
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(SHOTS, 'crop.png') });
+    // Ny beskjaering av det nye bildet (10 % nederst) og flytting
+    await page.evaluate(() => {
+      const sh = window.__shapes.find((x) => x.id === '101');
+      sh.height *= 0.9; sh.top += 50;
+      window.Bridge.getShapeCrop = async () => ({ l: 0, t: 0, r: 0, b: 0.1 });
+      const i = document.getElementById('sl-saturation'); i.value = 60; i.dispatchEvent(new Event('input'));
+    });
+    await page.waitForFunction(() => window.__log.filter((l) => l.op === 'delete').length === 2, null, { timeout: 10000 });
+    const ins2 = await page.evaluate(() => window.__log.filter((l) => l.op === 'insert')[1]);
+    const png2 = await decodeB64Png(page, ins2.data);
+    check(png2.w === 600 && png2.h === 900 && Math.abs(ins2.opts.imageTop - 122) < 0.01 && Math.abs(ins2.opts.imageHeight - 202.5) < 0.01,
+      'ny beskjæring og flytting legges oppå den forrige ' + png2.w + 'x' + png2.h + ' ' + JSON.stringify(ins2.opts));
+    // Skjul forhaandsvisningen
+    await page.click('#btnTogglePreview');
+    check(await page.isHidden('#stage') && await page.isVisible('#previewHint') && await page.isVisible('#btnUndo'), 'forhåndsvisningen kan skjules');
+    await page.screenshot({ path: path.join(SHOTS, 'hidden.png') });
+    await page.reload();
+    await page.waitForSelector('#infoRow:not([hidden])');
+    check(await page.isHidden('#stage'), 'valget huskes til neste gang');
+    await page.click('#btnTogglePreview');
+    check(await page.isVisible('#stage'), 'forhåndsvisningen kan vises igjen');
     check(errors.length === 0, 'ingen JS-feil ' + errors.join(' | '));
     await page.close();
   }

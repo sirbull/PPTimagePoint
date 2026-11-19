@@ -87,6 +87,15 @@
     if (!chosen) chosen = cands.length === 1 ? cands[0] : null;
     if (!chosen) throw new Error('Could not find the selected picture on the slide.');
 
+    var crop = { l: 0, t: 0, r: 0, b: 0 };
+    if (chosen.srcRect) {
+      ['l', 't', 'r', 'b'].forEach(function (k) {
+        var v = parseInt(chosen.srcRect.getAttribute(k) || '0', 10);
+        crop[k] = isNaN(v) ? 0 : v / 100000;
+      });
+    }
+    if (target.infoOnly) return { crop: crop, name: chosen.name || 'image' };
+
     var relsPath = slidePath.replace(/slides\/(slide\d+\.xml)$/, 'slides/_rels/$1.rels');
     var relsFile = zip.file(relsPath);
     if (!relsFile) throw new Error('The slide relationship file is missing.');
@@ -108,13 +117,6 @@
     if (!mime) throw new Error('The image format .' + ext + ' is not supported (try PNG or JPG).');
     var bytes = await zip.file(targetPath).async('uint8array');
 
-    var crop = { l: 0, t: 0, r: 0, b: 0 };
-    if (chosen.srcRect) {
-      ['l', 't', 'r', 'b'].forEach(function (k) {
-        var v = parseInt(chosen.srcRect.getAttribute(k) || '0', 10);
-        crop[k] = isNaN(v) ? 0 : v / 100000;
-      });
-    }
     return { bytes: bytes, mime: mime, crop: crop, name: chosen.name || 'image' };
   }
 
