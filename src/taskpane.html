@@ -45,13 +45,21 @@
     </div>
     <div id="toolbar" class="toolbar" hidden>
       <div class="seg" role="group" aria-label="Tools">
-        <button type="button" data-tool="pick" class="icon on" data-icon="pipette" data-tip="Pick background color: click the background. Shift+click adds more colors."></button>
+        <button type="button" data-tool="pick" class="icon" data-icon="removebg" data-tip="Remove background: click the background color in the picture. Shift+click adds more colors. Click again to turn the tool off."></button>
         <button type="button" data-tool="erase" class="icon" data-icon="eraser" data-tip="Erase: paint areas that should become transparent"></button>
         <button type="button" data-tool="restore" class="icon" data-icon="brush" data-tip="Restore: paint back parts of the subject"></button>
       </div>
       <button type="button" id="btnCompare" class="icon" data-icon="eye" data-tip="Hold to show the original"></button>
       <button type="button" id="btnPopout" class="icon" data-icon="popout" data-tip="Open a large preview window" hidden></button>
       <button type="button" id="bgSelect" class="icon bg-btn" data-tip="Preview background"><span class="bg-dot bgv-checker"></span></button>
+    </div>
+<div id="pickBar" class="pick-bar" hidden>
+      <div class="seg" role="group" aria-label="Pipette">
+        <button type="button" data-pickmode="set" class="icon" data-icon="pipette" data-tip="Pipette: pick the background color to remove"></button>
+        <button type="button" data-pickmode="add" class="icon" data-icon="pipettePlus" data-tip="Pipette +: add another color to remove (Shift+click)"></button>
+        <button type="button" data-pickmode="sub" class="icon" data-icon="pipetteMinus" data-tip="Pipette −: keep this color, it will not be removed (Alt+click)"></button>
+      </div>
+      <span class="muted pick-hint">Click the background in the picture.</span>
     </div>
     <div id="brushBar" class="brush-bar" hidden>
       <div class="slider" data-key="brush" data-min="1" data-max="150" data-step="1" data-def="30" data-label="Brush size"></div>
@@ -66,10 +74,10 @@
   </section>
 
   <main id="panels" hidden>
-    <details open id="secKey">
+    <details id="secKey">
       <summary>Remove background</summary>
       <div class="body">
-        <p class="hint">Click the background color in the image. <kbd>Shift</kbd>+click adds more key colors (for shadows or gradients).</p>
+        <p class="hint">Click the background color in the picture. Use the pipettes under the picture: <b>+</b> adds a color to remove (<kbd>Shift</kbd>+click), <b>&minus;</b> keeps a color that should stay (<kbd>Alt</kbd>+click).</p>
         <div class="row">
           <button type="button" id="btnAuto" data-icon="wand" data-tip="Find the background color along the image edges">Auto detect</button>
           <label class="switch"><input type="checkbox" id="keyEnabled"> On</label>

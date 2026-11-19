@@ -16,7 +16,7 @@ Alt skjer lokalt i PowerPoint. Ingen bilder sendes til noen server.
 
 1. Klikk **Hjem > Picture Tools** for å åpne panelet.
 2. Marker et bilde på lysbildet. Det hentes automatisk inn i panelet, og når du klikker på et annet bilde, følger panelet etter.
-3. Klikk på bakgrunnen i forhåndsvisningen. Bakgrunnen forsvinner med en gang.
+3. Velg verktøyet **Remove background** (figur i stiplet ramme) og klikk på bakgrunnen i forhåndsvisningen. Bakgrunnen forsvinner med en gang. Pipette **+** legger til flere farger som skal fjernes, og pipette **−** merker farger i motivet som skal beholdes.
 4. Finjuster:
    * **Tolerance**: hvor like bakgrunnsfargen pikslene må være for å fjernes.
    * **Softness**: myk kant i stedet for hard kant.

@@ -14,9 +14,14 @@
 <body class="pv-body">
   <header class="pv-bar">
     <div class="seg" role="group" aria-label="Tools">
-      <button type="button" data-tool="pick" class="icon on" data-icon="pipette" data-tip="Pick background color: click the background. Shift+click adds more colors."></button>
+      <button type="button" data-tool="pick" class="icon" data-icon="removebg" data-tip="Remove background: click the background color in the picture. Shift+click adds more colors. Click again to turn the tool off."></button>
       <button type="button" data-tool="erase" class="icon" data-icon="eraser" data-tip="Erase: paint areas that should become transparent"></button>
       <button type="button" data-tool="restore" class="icon" data-icon="brush" data-tip="Restore: paint back parts of the subject"></button>
+    </div>
+    <div id="pvPick" class="seg" role="group" aria-label="Pipette" hidden>
+      <button type="button" data-pickmode="set" class="icon on" data-icon="pipette" data-tip="Pipette: pick the background color to remove"></button>
+      <button type="button" data-pickmode="add" class="icon" data-icon="pipettePlus" data-tip="Pipette +: add another color to remove (Shift+click)"></button>
+      <button type="button" data-pickmode="sub" class="icon" data-icon="pipetteMinus" data-tip="Pipette −: keep this color, it will not be removed (Alt+click)"></button>
     </div>
     <div id="pvBrush" class="pv-brush" hidden>
       <label>Size <input type="range" id="pvSize" min="1" max="150" step="1" value="30"><output id="pvSizeOut">30</output></label>
@@ -35,7 +40,7 @@
     <canvas id="pvView" hidden></canvas>
     <div id="pvCursor" class="brush-cursor" hidden><i></i></div>
   </main>
-  <footer class="pv-foot muted"><span id="pvHint">Click the background to remove it.</span><span id="pvLive"></span></footer>
+  <footer class="pv-foot muted"><span id="pvHint">Choose a tool to edit the picture.</span><span id="pvLive"></span></footer>
   <div id="tip" class="tip" role="tooltip" hidden></div>
   <script src="js/preview.js"></script>
 </body>

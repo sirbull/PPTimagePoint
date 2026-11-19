@@ -11,7 +11,7 @@
   var inbox = {};
   var pv = null;          // Pipeline.Previewer
   var state = null;       // siste tilstand fra panelet
-  var local = { tool: 'pick', brush: 30, hardness: 65 };
+  var local = { tool: 'none', pickMode: 'set', brush: 30, hardness: 65 };
   var drawing = null, compare = false, raf = false;
 
   /* ---------- Meldinger ---------- */
@@ -57,7 +57,7 @@
 
   function applyState(m) {
     state = m.s;
-    local.tool = m.tool; local.brush = m.brush; local.hardness = m.hardness;
+    local.tool = m.tool; local.pickMode = m.pickMode || 'set'; local.brush = m.brush; local.hardness = m.hardness;
     if (!drawing) syncTools();
     $('pvSize').value = m.brush; $('pvSizeOut').textContent = m.brush;
     $('pvHard').value = m.hardness; $('pvHardOut').textContent = m.hardness;
@@ -86,9 +86,15 @@
     $('pvBrush').hidden = !brush;
     $('pvStage').classList.toggle('tool-erase', local.tool === 'erase');
     $('pvStage').classList.toggle('tool-restore', local.tool === 'restore');
-    $('pvHint').textContent = brush
-      ? (local.tool === 'erase' ? 'Paint over what should become transparent.' : 'Paint back parts of the subject.')
-      : 'Click the background to remove it. Shift+click adds more colors.';
+    $('pvStage').classList.toggle('tool-none', local.tool === 'none');
+    $('pvStage').classList.toggle('tool-pick', local.tool === 'pick');
+    $('pvPick').hidden = local.tool !== 'pick';
+    ['pm-set', 'pm-add', 'pm-sub'].forEach(function (c) { $('pvStage').classList.toggle(c, c === 'pm-' + local.pickMode); });
+    document.querySelectorAll('[data-pickmode]').forEach(function (b) { b.classList.toggle('on', b.dataset.pickmode === local.pickMode); });
+    $('pvHint').textContent = local.tool === 'erase' ? 'Paint over what should become transparent.'
+      : local.tool === 'restore' ? 'Paint back parts of the subject.'
+      : local.tool === 'pick' ? 'Click the background color to remove it. Shift+click adds more colors.'
+      : 'Choose a tool to edit the picture.';
     if (!brush) $('pvCursor').hidden = true;
   }
 
@@ -117,7 +123,12 @@
       if (!pv || !state) return;
       e.preventDefault();
       var pos = eventPos(e);
-      if (local.tool === 'pick') { send({ t: 'pick', x: pos.x, y: pos.y, add: e.shiftKey || e.ctrlKey || e.metaKey }); return; }
+      if (local.tool === 'none') return;
+      if (local.tool === 'pick') {
+        var mode = e.altKey ? 'sub' : (e.shiftKey || e.ctrlKey || e.metaKey) ? 'add' : local.pickMode;
+        send({ t: 'pick', x: pos.x, y: pos.y, mode: mode });
+        return;
+      }
       v.setPointerCapture(e.pointerId);
       drawing = { mode: local.tool, r: local.brush / 1000, h: local.hardness / 100, pts: [{ x: pos.x, y: pos.y }] };
       draw();
@@ -125,7 +136,7 @@
     v.addEventListener('pointermove', function (e) {
       if (!pv) return;
       var pos = eventPos(e);
-      if (local.tool !== 'pick') placeCursor(pos);
+      if (local.tool === 'erase' || local.tool === 'restore') placeCursor(pos);
       if (drawing) { drawing.pts.push({ x: pos.x, y: pos.y }); draw(); }
     });
     var end = function () {
@@ -142,7 +153,10 @@
     v.addEventListener('pointerleave', function () { $('pvCursor').hidden = true; });
 
     document.querySelectorAll('[data-tool]').forEach(function (b) {
-      b.addEventListener('click', function () { local.tool = b.dataset.tool; syncTools(); send({ t: 'tool', tool: local.tool }); });
+      b.addEventListener('click', function () { local.tool = local.tool === b.dataset.tool ? 'none' : b.dataset.tool; syncTools(); send({ t: 'tool', tool: local.tool }); });
+    });
+    document.querySelectorAll('[data-pickmode]').forEach(function (b) {
+      b.addEventListener('click', function () { local.pickMode = b.dataset.pickmode; syncTools(); send({ t: 'pickmode', v: local.pickMode }); });
     });
     $('pvSize').addEventListener('input', function (e) { local.brush = +e.target.value; $('pvSizeOut').textContent = e.target.value; });
     $('pvSize').addEventListener('change', function (e) { send({ t: 'brush', v: +e.target.value }); });

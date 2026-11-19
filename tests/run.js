@@ -183,6 +183,7 @@ async function decodeB64Png(page, b64) {
     await page.goto(base + '/src/taskpane.html');
     await page.setInputFiles('#fileInput', path.join(__dirname, 'fixtures/green.jpg'));
     await page.waitForSelector('#stage:not([hidden])');
+    await page.click('[data-tool="pick"]');
     await page.click('#btnAuto');
     await page.waitForTimeout(700);
     // Angre og gjoer om med tastaturet
@@ -250,6 +251,7 @@ async function decodeB64Png(page, b64) {
     check(src.meta && src.meta.shapeId === '3', 'plassering lest fra figuren');
     // klikk paa bakgrunnen i forhaandsvisningen
     const box = await page.locator('#view').boundingBox();
+    await page.click('[data-tool="pick"]');
     await page.mouse.click(box.x + 6, box.y + 6);
     await page.waitForTimeout(200);
     const enabled = await page.evaluate(() => window.__pip.S.key.enabled && window.__pip.S.key.colors.length === 1);
@@ -274,6 +276,7 @@ async function decodeB64Png(page, b64) {
     const st = await page.locator('#status').textContent();
     check(/inserted/.test(st), 'statusmelding: ' + st);
     // ny runde med trim: skal erstatte det nye bildet
+    await page.click('[data-tool="pick"]');
     await page.check('#trim');
     await page.click('#btnInsert');
     await page.waitForFunction(() => window.__log.filter((l) => l.op === 'delete').length === 2, null, { timeout: 15000 });
@@ -294,6 +297,7 @@ async function decodeB64Png(page, b64) {
     await page.setInputFiles('#fileInput', path.join(__dirname, 'fixtures/white.png'));
     await page.waitForSelector('#stage:not([hidden])');
     const box = await page.locator('#view').boundingBox();
+    await page.click('[data-tool="pick"]');
     await page.mouse.click(box.x + 4, box.y + box.height - 4);
     await page.click('#bgSelect');
     await page.click('.bg-menu [data-bg="red50"]');
@@ -307,6 +311,7 @@ async function decodeB64Png(page, b64) {
     await page.setInputFiles('#fileInput', path.join(__dirname, 'fixtures/white.png'));
     await page.waitForSelector('#stage:not([hidden])');
     check(await page.evaluate(() => document.getElementById('stage').classList.contains('bgv-purple50')), 'valget huskes');
+    await page.click('[data-tool="pick"]');
     await page.mouse.click(box.x + 4, box.y + box.height - 4);
     await page.waitForTimeout(200);
     const r = await page.evaluate(() => { const res = window.__pip.renderFull(); const d = res.image.data; const w = res.image.width; const a = (x, y) => d[(y * w + x) * 4 + 3]; return [a(10, 10), a(450, 450), a(450, 160)]; });
@@ -427,6 +432,7 @@ async function decodeB64Png(page, b64) {
     check(await page.isDisabled('#btnResetAll') === false, 'Reset-knappen er aktiv når et bilde er lastet');
     // fjern bakgrunnen og juster farger, vent paa live
     const box = await page.locator('#view').boundingBox();
+    await page.click('[data-tool="pick"]');
     await page.mouse.click(box.x + 4, box.y + 4);
     await page.evaluate(() => { const i = document.getElementById('sl-hue'); i.value = 90; i.dispatchEvent(new Event('input')); });
     await page.waitForFunction(() => window.__log.some((l) => l.op === 'delete'), null, { timeout: 10000 });
@@ -443,6 +449,7 @@ async function decodeB64Png(page, b64) {
     await page.waitForTimeout(1500);
     check(await page.evaluate(() => window.__log.length === 4), 'live legger ikke inn noe ekstra etter Reset');
     // verktoeytips
+    await page.mouse.move(5, 300);
     await page.hover('#btnResetAll');
     await page.waitForTimeout(600);
     check(await page.isVisible('#tip') && /original/.test(await page.locator('#tip').textContent()), 'verktøytips vises ved hover');
@@ -548,6 +555,7 @@ async function decodeB64Png(page, b64) {
     await page.goto(base + '/src/taskpane.html');
     await page.waitForSelector('#stage:not([hidden])');
     const box = await page.locator('#view').boundingBox();
+    await page.click('[data-tool="pick"]');
     await page.mouse.click(box.x + 4, box.y + 4);
     await page.waitForFunction(() => window.__log.some((l) => l.op === 'delete'), null, { timeout: 10000 });
     await page.waitForTimeout(600);
@@ -590,6 +598,7 @@ async function decodeB64Png(page, b64) {
     check(size[0] === 800 && size[1] === 1000, 'vinduet får bildet i høyere oppløsning (' + size + ')');
     // klikk paa bakgrunnen i vinduet
     const vb = await frame.locator('#pvView').boundingBox();
+    await frame.locator('[data-tool="pick"]').click();
     await page.mouse.click(vb.x + 6, vb.y + 6);
     await page.waitForFunction(() => window.__pip.S.key.enabled);
     check(true, 'pipetten i vinduet fjerner bakgrunnen i panelet');
@@ -695,6 +704,63 @@ async function decodeB64Png(page, b64) {
     await page.click('#btnResetAll');
     await page.waitForTimeout(200);
     check(await page.evaluate(() => { const a = window.__pip.S.adjust; return a.mixer.every((v) => !v) && a.curves.r.length === 2 && a.levels.inBlack === 0; }), 'Reset nullstiller mixer, kurver og levels');
+    check(errors.length === 0, 'ingen JS-feil ' + errors.join(' | '));
+    await page.close();
+  }
+
+  /* ---- 12. Remove background som verktoey ---- */
+  console.log('Test 12: Remove background er et eget verktøy');
+  {
+    const page = await browser.newPage({ viewport: { width: 360, height: 900 } });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.route('**/appsforoffice.microsoft.com/**', (r) => r.fulfill({ body: '', contentType: 'text/javascript' }));
+    await page.goto(base + '/src/taskpane.html');
+    await page.setInputFiles('#fileInput', path.join(__dirname, 'fixtures/white.png'));
+    await page.waitForSelector('#stage:not([hidden])');
+    const st = () => page.evaluate(() => ({ tool: window.__pip.S.tool, open: document.getElementById('secKey').open, first: document.getElementById('panels').firstElementChild.id, key: window.__pip.S.key.enabled }));
+    let r = await st();
+    check(r.tool === 'none' && r.open === false, 'ingen verktøy valgt og seksjonen lukket som standard ' + JSON.stringify(r));
+    const box = await page.locator('#view').boundingBox();
+    await page.mouse.click(box.x + 4, box.y + 4);
+    check((await st()).key === false, 'klikk i bildet uten verktøy gjør ingenting');
+    await page.click('[data-tool="pick"]');
+    r = await st();
+    check(r.tool === 'pick' && r.open && r.first === 'secKey', 'verktøyet åpner Remove background øverst ' + JSON.stringify(r));
+    await page.mouse.click(box.x + 4, box.y + 4);
+    check((await st()).key === true, 'klikk på bakgrunnen fjerner den');
+    await page.screenshot({ path: path.join(SHOTS, 'removebg-tool.png') });
+    await page.click('[data-tool="erase"]');
+    r = await st();
+    check(r.tool === 'erase' && !r.open && r.key, 'annet verktøy lukker seksjonen, bakgrunnen forblir fjernet ' + JSON.stringify(r));
+    await page.click('[data-tool="pick"]');
+    await page.click('[data-tool="pick"]');
+    r = await st();
+    check(r.tool === 'none' && !r.open, 'klikk på aktivt verktøy slår det av');
+    await page.click('#secKey summary');
+    await page.waitForTimeout(150);
+    r = await st();
+    check(r.tool === 'pick' && r.open, 'åpner du seksjonen selv, velges verktøyet');
+    // Pipette +/-: med hoey toleranse forsvinner ogsaa det graa motivet, pipette minus redder det
+    check(await page.isVisible('#pickBar'), 'pipettene vises når verktøyet er valgt');
+    await page.evaluate(() => { const i = document.getElementById('sl-tolerance'); i.value = 100; i.dispatchEvent(new Event('input')); });
+    const alphaAt = (x, y) => page.evaluate(([x, y]) => { const r = window.__pip.renderFull(); return r.image.data[(y * r.image.width + x) * 4 + 3]; }, [x, y]);
+    check(await alphaAt(450, 650) === 0, 'høy toleranse fjerner også det grå motivet');
+    await page.click('[data-pickmode="sub"]');
+    check(await page.evaluate(() => document.getElementById('stage').classList.contains('pm-sub')), 'markøren viser minus');
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.72);
+    check(await page.evaluate(() => window.__pip.S.key.keep.length === 1), 'pipette minus legger til en farge som beholdes');
+    check(await alphaAt(450, 650) === 255 && await alphaAt(10, 10) === 0, 'det grå motivet er tilbake, bakgrunnen er fortsatt borte');
+    check(await page.locator('#chips .chip.keep').count() === 1, 'behold-fargen vises i listen');
+    await page.click('[data-pickmode="add"]');
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+    check(await page.evaluate(() => window.__pip.S.key.colors.length === 2), 'pipette pluss legger til en bakgrunnsfarge');
+    await page.screenshot({ path: path.join(SHOTS, 'pipettes.png') });
+    await page.keyboard.press('Control+z');
+    check(await page.evaluate(() => window.__pip.S.key.colors.length === 1 && window.__pip.S.key.keep.length === 1), 'Ctrl+Z angrer pipette pluss');
+    await page.click('[data-pickmode="set"]');
+    await page.mouse.click(box.x + 4, box.y + 4);
+    check(await page.evaluate(() => window.__pip.S.key.colors.length === 1 && window.__pip.S.key.keep.length === 0), 'vanlig pipette starter på nytt');
     check(errors.length === 0, 'ingen JS-feil ' + errors.join(' | '));
     await page.close();
   }

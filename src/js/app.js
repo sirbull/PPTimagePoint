@@ -16,7 +16,7 @@
     trim: false,
     brush: 30,
     hardness: 65,
-    tool: 'pick',
+    tool: 'none',
     out: { w: 0, h: 0, lock: true },
     format: 'auto',
     compare: false
@@ -114,7 +114,7 @@
       origMeta: opt.meta ? Object.assign({}, opt.meta) : null, slideChanged: false,
       origCrop: c, sessionId: newSessionId() };
     S.strokes = [];
-    S.key.colors = []; S.key.seeds = []; S.key.enabled = false;
+    S.key.colors = []; S.key.seeds = []; S.key.keep = []; S.key.enabled = false;
     S.adjust = Ops.defaultAdjust();
     S.trim = false;
     S.out = { w: full.width, h: full.height, lock: true };
@@ -370,7 +370,8 @@
 
   function keyParamsKey() {
     var k = S.key;
-    return JSON.stringify([k.colors.map(function (c) { return [c.r, c.g, c.b]; }), k.seeds, k.tolerance, k.softness, k.mode, k.fromEdges, k.choke, k.feather]);
+    var rgb = function (c) { return [c.r, c.g, c.b]; };
+    return JSON.stringify([k.colors.map(rgb), (k.keep || []).map(rgb), k.seeds, k.tolerance, k.softness, k.mode, k.fromEdges, k.choke, k.feather]);
   }
 
   function keyActive() { return Pipeline.keyActive(S); }
@@ -381,7 +382,9 @@
 
   /** Alfakart i full opploesning, med omraadet fra forhaandsvisningen. */
   function buildAlpha(img) {
-    return Pipeline.alphaFor(img, S, { proxy: S.src.proxy, proxyRegion: cache.pv && cache.pv.region }).alpha;
+    // Bruk omraadet fra forhaandsvisningen bare hvis det er regnet ut med de samme innstillingene
+    var fresh = cache.pv && Pipeline.keyActive(S) && cache.pv.maskKey === Pipeline.keyParamsKey(S);
+    return Pipeline.alphaFor(img, S, { proxy: S.src.proxy, proxyRegion: fresh ? cache.pv.region : null }).alpha;
   }
 
   function finalize(colorImg, baseAlpha) { return Pipeline.finalize(colorImg, baseAlpha, S); }
@@ -576,7 +579,7 @@
     if (!S.src || live_.running) return;
     var F = S.src.full;
     S.adjust = Ops.defaultAdjust();
-    S.key.colors = []; S.key.seeds = []; S.key.enabled = false;
+    S.key.colors = []; S.key.seeds = []; S.key.keep = []; S.key.enabled = false;
     S.strokes = []; S.trim = false;
     S.out = { w: F.width, h: F.height, lock: true };
     S.crop = { x: 0, y: 0, w: F.width, h: F.height };
@@ -688,6 +691,7 @@
     document.querySelector('.seg').hidden = previewHidden;
     $('btnCompare').hidden = previewHidden;
     $('brushBar').hidden = !hasImg || previewHidden || (S.tool !== 'erase' && S.tool !== 'restore');
+    $('pickBar').hidden = !hasImg || previewHidden || S.tool !== 'pick';
     $('bgSelect').hidden = previewHidden;
     $('previewHint').hidden = !hasImg || !previewHidden;
     setIcon($('btnTogglePreview'), previewHidden ? 'eye' : 'eyeOff');
@@ -699,7 +703,7 @@
     $('btnTogglePreview').addEventListener('click', function () {
       previewHidden = !previewHidden;
       try { localStorage.setItem('pip.hidePreview', previewHidden ? '1' : '0'); } catch (e) { /* ikke kritisk */ }
-      if (previewHidden) setTool('pick');
+      if (previewHidden) setTool('none');
       applyPreviewPref();
       updateCursorSize();
     });
@@ -1065,18 +1069,31 @@
   function renderChips() {
     var box = $('chips');
     box.innerHTML = '';
-    S.key.colors.forEach(function (c, i) {
+    var hexOf = function (c) { return '#' + [c.r, c.g, c.b].map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join(''); };
+    var add = function (c, kind, onRemove) {
       var chip = document.createElement('span');
-      chip.className = 'chip';
-      var hex = '#' + [c.r, c.g, c.b].map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join('');
-      chip.innerHTML = '<i style="background:' + hex + '"></i>' + hex.toUpperCase() + '<button type="button" title="Remove color" aria-label="Remove color">×</button>';
-      chip.querySelector('button').addEventListener('click', function () {
+      chip.className = 'chip ' + kind;
+      var hex = hexOf(c);
+      var tip = kind === 'keep' ? 'Kept color (not removed)' : 'Removed background color';
+      chip.dataset.tip = tip;
+      chip.innerHTML = '<b>' + (kind === 'keep' ? '\u2212' : '+') + '</b><i style="background:' + hex + '"></i>' + hex.toUpperCase() +
+        '<button type="button" aria-label="Remove from list">\u00d7</button>';
+      chip.querySelector('button').addEventListener('click', onRemove);
+      box.appendChild(chip);
+    };
+    S.key.colors.forEach(function (c, i) {
+      add(c, 'bg', function () {
         S.key.colors.splice(i, 1);
         S.key.seeds.splice(i, 1);
         if (!S.key.colors.length) S.key.enabled = false;
         syncUI(); render();
       });
-      box.appendChild(chip);
+    });
+    (S.key.keep || []).forEach(function (c, i) {
+      add(c, 'keep', function () {
+        S.key.keep = S.key.keep.filter(function (_, j) { return j !== i; });
+        syncUI(); render();
+      });
     });
   }
 
@@ -1099,13 +1116,31 @@
   }
 
   function setTool(t) {
+    if (!t) t = 'none';
+    var was = S.tool;
     S.tool = t;
+    // Remove background-verktoeyet aapner sin seksjon oeverst; andre verktoey lukker den
+    var sec = $('secKey');
+    if (t === 'pick') {
+      sec.open = true;
+      if (sec.parentElement.firstElementChild !== sec) sec.parentElement.insertBefore(sec, sec.parentElement.firstElementChild);
+      // rull bare hvis overskriften ikke er synlig, og bare saa mye at den kommer frem
+      if (was !== 'pick') setTimeout(function () {
+        var top = sec.getBoundingClientRect().top, limit = window.innerHeight - 140;
+        if (top > limit) window.scrollBy({ top: top - limit, behavior: 'smooth' });
+      }, 0);
+    } else {
+      sec.open = false;
+    }
+    $('stage').classList.toggle('tool-none', t === 'none');
     document.querySelectorAll('[data-tool]').forEach(function (b) { b.classList.toggle('on', b.dataset.tool === t); });
     var st = $('stage');
     st.classList.toggle('tool-erase', t === 'erase');
     st.classList.toggle('tool-restore', t === 'restore');
     $('brushCursor').hidden = true;
     $('brushBar').hidden = !S.src || previewHidden || (t !== 'erase' && t !== 'restore');
+    $('pickBar').hidden = !S.src || previewHidden || t !== 'pick';
+    $('stage').classList.toggle('tool-pick', t === 'pick');
     Popout.push();
   }
 
@@ -1128,12 +1163,38 @@
     };
   }
 
-  function pickAt(pos, add) {
+  /** mode: 'set' (ny bakgrunnsfarge), 'add' (legg til farge) eller 'sub' (behold denne fargen). */
+  function pickAt(pos, mode) {
+    if (mode === true) mode = 'add';
+    if (!mode) mode = 'set';
     var c = Ops.sampleColor(S.src.proxy, pos.x, pos.y, 2);
-    if (add) { S.key.colors.push(c); S.key.seeds.push({ x: pos.x, y: pos.y }); }
-    else { S.key.colors = [c]; S.key.seeds = [{ x: pos.x, y: pos.y }]; }
-    S.key.enabled = true;
+    if (!S.key.keep) S.key.keep = [];
+    if (mode === 'sub') {
+      S.key.keep = S.key.keep.concat([c]);
+      if (!S.key.colors.length) status('Pick a background color first, then use the minus pipette on colors to keep.');
+    } else if (mode === 'add' && S.key.colors.length) {
+      S.key.colors.push(c); S.key.seeds.push({ x: pos.x, y: pos.y });
+    } else {
+      S.key.colors = [c]; S.key.seeds = [{ x: pos.x, y: pos.y }]; S.key.keep = [];
+    }
+    S.key.enabled = S.key.colors.length > 0;
     syncUI(); render();
+  }
+
+  function setPickMode(m) {
+    S.pickMode = m;
+    document.querySelectorAll('[data-pickmode]').forEach(function (b) { b.classList.toggle('on', b.dataset.pickmode === m); });
+    var st = $('stage');
+    ['pm-set', 'pm-add', 'pm-sub'].forEach(function (c) { st.classList.remove(c); });
+    st.classList.add('pm-' + m);
+    Popout.push();
+  }
+
+  /** Modus fra knappene, overstyrt av Shift (pluss) og Alt (minus). */
+  function pickModeFor(e) {
+    if (e.altKey) return 'sub';
+    if (e.shiftKey || e.ctrlKey || e.metaKey) return 'add';
+    return S.pickMode || 'set';
   }
 
   function bindStage() {
@@ -1143,7 +1204,8 @@
       if (!S.src) return;
       e.preventDefault();
       var pos = eventPos(e);
-      if (S.tool === 'pick') { pickAt(pos, e.shiftKey || e.ctrlKey || e.metaKey); return; }
+      if (S.tool === 'none') return;
+      if (S.tool === 'pick') { pickAt(pos, pickModeFor(e)); return; }
       view.setPointerCapture(e.pointerId);
       drawing = { mode: S.tool, r: S.brush / 1000, h: S.hardness / 100, pts: [{ x: pos.x, y: pos.y }] };
       live_.drawing = true;
@@ -1153,7 +1215,7 @@
     view.addEventListener('pointermove', function (e) {
       if (!S.src) return;
       var pos = eventPos(e);
-      if (S.tool !== 'pick') {
+      if (S.tool === 'erase' || S.tool === 'restore') {
         cursor.hidden = false;
         var off = view.offsetLeft, top = view.offsetTop;
         cursor.style.left = (off + pos.cx) + 'px'; cursor.style.top = (top + pos.cy) + 'px';
@@ -1200,8 +1262,19 @@
     });
     $('fileInput').addEventListener('change', function (e) { openFile(e.target.files[0]); e.target.value = ''; });
 
+    document.querySelectorAll('[data-pickmode]').forEach(function (b) {
+      b.addEventListener('click', function () { setPickMode(b.dataset.pickmode); });
+    });
+    setPickMode('set');
+    // aapner/lukker du seksjonen selv, foelger verktoeyet med
+    $('secKey').addEventListener('toggle', function () {
+      var open = $('secKey').open;
+      if (open && S.tool !== 'pick') setTool('pick');
+      else if (!open && S.tool === 'pick') setTool('none');
+    });
     document.querySelectorAll('[data-tool]').forEach(function (b) {
-      b.addEventListener('click', function () { setTool(b.dataset.tool); });
+      // klikk paa aktivt verktoey slaar det av
+      b.addEventListener('click', function () { setTool(S.tool === b.dataset.tool ? 'none' : b.dataset.tool); });
     });
     var cmp = $('btnCompare');
     var on = function (e) { e.preventDefault(); S.compare = true; renderNow(); };
@@ -1294,7 +1367,7 @@
 
     function stateMessage() {
       return {
-        t: 'state', s: pipeState(), tool: S.tool, brush: S.brush, hardness: S.hardness,
+        t: 'state', s: pipeState(), tool: S.tool, pickMode: S.pickMode || 'set', brush: S.brush, hardness: S.hardness,
         canUndo: !$('btnUndo').disabled, canRedo: !$('btnRedo').disabled, live: $('liveState').textContent
       };
     }
@@ -1309,7 +1382,8 @@
     function handle(m) {
       switch (m.t) {
         case 'ready': ready = true; sentFor = null; push(); break;
-        case 'pick': if (S.src) pickAt({ x: m.x, y: m.y }, m.add); break;
+        case 'pick': if (S.src) pickAt({ x: m.x, y: m.y }, m.mode || (m.add ? 'add' : 'set')); break;
+        case 'pickmode': setPickMode(m.v); break;
         case 'stroke': if (S.src) { S.strokes.push(m.stroke); render(); setTimeout(commitNow, 0); } break;
         case 'tool': setTool(m.tool); break;
         case 'brush': S.brush = m.v; setSlider('brush', m.v); updateCursorSize(); push(); break;

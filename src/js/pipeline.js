@@ -15,7 +15,21 @@
 
   function keyParamsKey(state) {
     var k = state.key;
-    return JSON.stringify([k.colors.map(function (c) { return [c.r, c.g, c.b]; }), k.seeds, k.tolerance, k.softness, k.mode, k.fromEdges, k.choke, k.feather]);
+    var rgb = function (c) { return [c.r, c.g, c.b]; };
+    return JSON.stringify([k.colors.map(rgb), (k.keep || []).map(rgb), k.seeds, k.tolerance, k.softness, k.mode, k.fromEdges, k.choke, k.feather]);
+  }
+
+  /**
+   * Avstand til bakgrunnsfargene. Piksler som ligner mer paa en "behold"-farge
+   * (pipette minus) enn paa bakgrunnen, regnes ikke som bakgrunn.
+   */
+  function keyDistance(img, k) {
+    var dist = Ops.distanceMap(img, k.colors);
+    if (k.keep && k.keep.length) {
+      var kd = Ops.distanceMap(img, k.keep);
+      for (var i = 0; i < dist.length; i++) if (kd[i] <= dist[i]) dist[i] = 255;
+    }
+    return dist;
   }
 
   /**
@@ -26,13 +40,13 @@
     if (!keyActive(state)) return { alpha: null, region: null };
     opts = opts || {};
     var w = img.width, h = img.height, s = scaleOf(img), k = state.key;
-    var dist = Ops.distanceMap(img, k.colors);
+    var dist = keyDistance(img, k);
     var region;
     if (!opts.proxy || k.mode === 'global') {
       region = Ops.computeRegion(dist, w, h, k);
     } else {
       var P = opts.proxy;
-      var pr = opts.proxyRegion || Ops.computeRegion(Ops.distanceMap(P, k.colors), P.width, P.height, k);
+      var pr = opts.proxyRegion || Ops.computeRegion(keyDistance(P, k), P.width, P.height, k);
       region = Ops.upscaleRegion(pr, P.width, P.height, w, h);
     }
     var alpha = Ops.alphaFromDist(dist, region, k.tolerance, k.softness);
@@ -102,6 +116,7 @@
   global.Pipeline = {
     scaleOf: scaleOf,
     keyActive: keyActive,
+    keyParamsKey: keyParamsKey,
     alphaFor: alphaFor,
     finalize: finalize,
     Previewer: Previewer
