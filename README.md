@@ -44,8 +44,9 @@ PowerPoint Designer foreslår oppsett hver gang et bilde settes inn, og live-opp
 
 PowerPoint lar ikke tillegg tegne direkte i et bilde, så live-oppdatering betyr at bildet på lysbildet byttes ut med en ny versjon i full oppløsning. Det har tre følger:
 
-* Panelet jobber alltid fra originalpikslene så lenge bildet er åpent, så justeringene kan endres og nullstilles uten tap. Markerer du et annet bilde og så går tilbake, er det den redigerte versjonen som lastes inn.
-* Hver oppdatering blir et eget angresteg i PowerPoint (Ctrl+Z).
+* Panelet jobber alltid fra originalpikslene, så justeringene kan endres og nullstilles uten tap.
+* Bildet får et usynlig merke i presentasjonen, og originalen, innstillingene og angrehistorikken lagres lokalt på maskinen. Klikker du på bildet igjen senere, også etter at panelet har vært lukket (for eksempel av Utforming), fortsetter du der du slapp. De 30 sist redigerte bildene huskes.
+* Hver oppdatering blir et eget angresteg i PowerPoint. Angrer du med Ctrl+Z i lysbildet (eller gjør om med Ctrl+Y), retter panelet seg etter versjonen som ligger på lysbildet.
 * Rotasjon, rammer og effekter på bildet følger ikke med når det byttes ut.
 
 Panelet henter originalfilen som ligger inne i presentasjonen, ikke en skjermkopi, så du jobber alltid i full oppløsning (opptil 6000 px på lengste side). Beskjæring du har gjort i PowerPoint blir tatt med.

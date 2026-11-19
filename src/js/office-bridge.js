@@ -43,7 +43,8 @@
         shapes.load('items/id,items/type');
         await ctx.sync();
         var img = shapes.items.filter(function (s) { return s.type === 'Image'; })[0];
-        return img ? { id: img.id } : null;
+        if (!img) return null;
+        return { id: img.id, sessionId: await readTag(ctx, img) };
       });
     },
 
@@ -104,7 +105,8 @@
         var pic = await PptxExtract.extractPicture(exported.value, { id: shape.id, name: shape.name });
         pic.meta = {
           slideId: slide.id, shapeId: shape.id, name: shape.name,
-          left: shape.left, top: shape.top, width: shape.width, height: shape.height
+          left: shape.left, top: shape.top, width: shape.width, height: shape.height,
+          sessionId: await readTag(ctx, shape)
         };
         return pic;
       });
@@ -133,7 +135,7 @@
      * Setter inn bildet (base64 uten prefiks). Med placement legges det paa
      * samme sted; med replaceMeta slettes originalen etterpaa.
      */
-    insertImage: async function (base64, placement, replaceMeta) {
+    insertImage: async function (base64, placement, replaceMeta, sessionId) {
       if (!Bridge.available) throw new Error('PowerPoint is not available.');
       var opts = { coercionType: Office.CoercionType.Image };
       if (placement) {
@@ -170,6 +172,7 @@
               try { s.name = replaceMeta.name; await ctx.sync(); } catch (e) { /* navn er ikke viktig */ }
             }
             if (!s) return { deleted: deleted, meta: null };
+            if (sessionId) await writeTag(ctx, s, sessionId);
             return {
               deleted: deleted,
               meta: {
@@ -185,6 +188,24 @@
       return newMeta || { deleted: false, meta: null };
     }
   };
+
+  // Usynlig merke paa bildet, slik at panelet kjenner det igjen senere
+  var TAG = 'PPTIMAGEPOINT';
+
+  async function readTag(ctx, shape) {
+    if (!Bridge.supports('1.3') || !shape.tags) return null;
+    try {
+      var t = shape.tags.getItemOrNullObject(TAG);
+      t.load('value');
+      await ctx.sync();
+      return t.isNullObject ? null : t.value;
+    } catch (e) { return null; }
+  }
+
+  async function writeTag(ctx, shape, value) {
+    if (!Bridge.supports('1.3') || !shape.tags) return;
+    try { shape.tags.add(TAG, value); await ctx.sync(); } catch (e) { /* ikke kritisk */ }
+  }
 
   function userError(msg) { var e = new Error(msg); e.userFacing = true; return e; }
 

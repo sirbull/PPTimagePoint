@@ -25,25 +25,47 @@ let failures = 0;
 function check(cond, msg) { console.log((cond ? '  ok   ' : '  FEIL ') + msg); if (!cond) failures++; }
 
 const officeMock = (pptxB64) => {
-  window.__log = [];
-  const shapes = [
+  // Med __persistMock overlever "presentasjonen" at panelet lastes paa nytt
+  const saved = window.__persistMock && sessionStorage.getItem('mockState');
+  const st = saved ? JSON.parse(saved) : null;
+  window.__log = st ? st.log : [];
+  const shapes = st ? st.shapes : [
     { id: '2', name: 'Picture 1', type: 'Image', left: 36, top: 36, width: 144, height: 144 },
     { id: '3', name: 'Testbilde', type: 'Image', left: 216, top: 72, width: 360, height: 225 },
   ];
   window.__shapes = shapes;
-  let selected = window.__initialSelection || '3';
-  window.__select = (id) => { selected = id; window.__selHandler && window.__selHandler({}); };
+  let selected = st ? st.selected : (window.__initialSelection || '3');
+  const persist = () => {
+    if (window.__persistMock) sessionStorage.setItem('mockState', JSON.stringify({ shapes, selected, log: window.__log.map((l) => ({ op: l.op, id: l.id, opts: l.opts })) }));
+  };
+  const withTags = (s) => {
+    if (!s.tagMap) s.tagMap = {};
+    Object.defineProperty(s, 'tags', { configurable: true, enumerable: false, value: {
+      getItemOrNullObject: (k) => ({ isNullObject: !(k in s.tagMap), value: s.tagMap[k], load() {} }),
+      add: (k, v) => { s.tagMap[k] = v; persist(); },
+    } });
+    return s;
+  };
+  // Etterligner Ctrl+Z / Ctrl+Y i PowerPoint: bytt synlig figur og marker den
+  window.__pptSwap = (removeId, restoreId) => {
+    const i = shapes.findIndex((x) => x.id === removeId);
+    if (i >= 0) (window.__trash = window.__trash || []).push(shapes.splice(i, 1)[0]);
+    const t = window.__trash.findIndex((x) => x.id === restoreId);
+    shapes.push(window.__trash.splice(t, 1)[0]);
+    window.__select(restoreId);
+  };
+  window.__select = (id) => { selected = id; persist(); window.__selHandler && window.__selHandler({}); };
   const coll = (items) => ({ items, load() {} });
   const ctx = {
     sync: async () => {},
     presentation: {
-      getSelectedShapes: () => coll(shapes.filter((s) => s.id === selected)),
+      getSelectedShapes: () => coll(shapes.filter((s) => s.id === selected).map(withTags)),
       getSelectedSlides: () => coll([{ id: '256#', exportAsBase64: () => ({ value: pptxB64 }) }]),
       slides: { getItem: () => ({
         exportAsBase64: () => ({ value: pptxB64 }),
         shapes: { getItemOrNullObject: (id) => {
           const s = shapes.find((x) => x.id === id);
-          return Object.assign({}, s || {}, { isNullObject: !s, load() {}, delete() { shapes.splice(shapes.indexOf(s), 1); window.__log.push({ op: 'delete', id }); } });
+          return Object.assign({}, s || {}, { isNullObject: !s, load() {}, delete() { (window.__trash = window.__trash || []).push(s); shapes.splice(shapes.indexOf(s), 1); window.__log.push({ op: 'delete', id }); persist(); } });
         } },
       }) },
     },
@@ -63,6 +85,7 @@ const officeMock = (pptxB64) => {
           const id = String(100 + window.__log.length);
           shapes.push({ id, name: 'Picture ' + id, type: 'Image', left: opts.imageLeft, top: opts.imageTop, width: opts.imageWidth, height: opts.imageHeight });
           selected = id;
+          persist();
           cb({ status: 'succeeded' });
         },
       },
@@ -352,6 +375,91 @@ async function decodeB64Png(page, b64) {
     await page.waitForTimeout(600);
     check(await page.isVisible('#tip') && /original/.test(await page.locator('#tip').textContent()), 'verktøytips vises ved hover');
     await page.screenshot({ path: path.join(SHOTS, 'icons.png') });
+    check(errors.length === 0, 'ingen JS-feil ' + errors.join(' | '));
+    await page.close();
+  }
+
+  /* ---- 7. Panelet lukkes og aapnes igjen (f.eks. av Utforming) ---- */
+  console.log('Test 7: redigeringene huskes når panelet lastes på nytt');
+  {
+    const page = await browser.newPage({ viewport: { width: 360, height: 900 } });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.route('**/appsforoffice.microsoft.com/**', (r) => r.fulfill({ body: '', contentType: 'text/javascript' }));
+    await page.addInitScript(() => { window.__persistMock = true; });
+    await page.addInitScript(officeMock, pptxB64);
+    await page.goto(base + '/src/taskpane.html');
+    await page.waitForSelector('#stage:not([hidden])');
+    await page.evaluate(() => { const i = document.getElementById('sl-hue'); i.value = 40; i.dispatchEvent(new Event('input')); });
+    await page.waitForFunction(() => window.__log.some((l) => l.op === 'delete'), null, { timeout: 10000 });
+    await page.waitForTimeout(800);
+    check(await page.evaluate(() => window.__shapes.find((x) => x.id === '101').tagMap.PPTIMAGEPOINT === window.__pip.S.src.sessionId + '|1'), 'det nye bildet er merket med økten');
+    await page.evaluate(() => { const i = document.getElementById('sl-saturation'); i.value = -50; i.dispatchEvent(new Event('input')); });
+    await page.waitForFunction(() => window.__log.filter((l) => l.op === 'delete').length === 2, null, { timeout: 10000 });
+    await page.waitForTimeout(500);
+    // Panelet lukkes og aapnes (samme presentasjon, nytt bilde-id 102 er markert)
+    await page.reload();
+    await page.waitForSelector('#stage:not([hidden])');
+    await page.waitForTimeout(300);
+    const r = await page.evaluate(() => ({ hue: window.__pip.S.adjust.hue, sat: window.__pip.S.adjust.saturation, w: window.__pip.S.src.full.width, st: document.getElementById('status').textContent, hueSlider: document.getElementById('sl-hue').value }));
+    check(r.hue === 40 && r.sat === -50 && r.hueSlider === '40', 'justeringene er hentet tilbake ' + JSON.stringify(r));
+    check(/restored/.test(r.st), 'melding om at redigeringene er hentet tilbake');
+    await page.waitForTimeout(1500);
+    check(await page.evaluate(() => window.__log.length === 4), 'ingen ny oppdatering av lysbildet bare av å åpne panelet');
+    await page.click('#info');
+    await page.keyboard.press('Control+z');
+    check(await page.evaluate(() => window.__pip.S.adjust.saturation === 0 && window.__pip.S.adjust.hue === 40), 'angrehistorikken er tatt vare på');
+    await page.waitForFunction(() => window.__log.filter((l) => l.op === 'delete').length === 3, null, { timeout: 10000 });
+    const dl = await page.evaluate(() => JSON.stringify(window.__log.map((l) => l.op + ':' + (l.id || ''))));
+    check(await page.evaluate(() => window.__log.filter((l) => l.op === 'delete')[2].id === '103'), 'lysbildet oppdateres videre fra det redigerte bildet ' + dl);
+    await page.click('#btnResetAll');
+    await page.waitForFunction(() => window.__log.filter((l) => l.op === 'delete').length === 4, null, { timeout: 10000 });
+    const last = await page.evaluate(() => window.__log.filter((l) => l.op === 'insert').pop());
+    check(last.opts.imageLeft === 216 && last.opts.imageTop === 72 && last.opts.imageWidth === 360 && last.opts.imageHeight === 225, 'Reset legger originalen tilbake på opprinnelig plass ' + JSON.stringify(last.opts));
+    check(await page.evaluate(() => window.__pip.S.adjust.hue === 0), 'Reset nullstiller etter gjenoppretting');
+    check(errors.length === 0, 'ingen JS-feil ' + errors.join(' | '));
+    await page.close();
+  }
+
+  /* ---- 8. Ctrl+Z og Ctrl+Y i PowerPoint ---- */
+  console.log('Test 8: panelet følger angring og gjør om i PowerPoint');
+  {
+    const page = await browser.newPage({ viewport: { width: 360, height: 900 } });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.route('**/appsforoffice.microsoft.com/**', (r) => r.fulfill({ body: '', contentType: 'text/javascript' }));
+    await page.addInitScript(officeMock, pptxB64);
+    await page.goto(base + '/src/taskpane.html');
+    await page.waitForSelector('#stage:not([hidden])');
+    const setSlider = (k, v) => page.evaluate(([k, v]) => { const i = document.getElementById('sl-' + k); i.value = v; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change', { bubbles: true })); }, [k, v]);
+    const adj = () => page.evaluate(() => [window.__pip.S.adjust.hue, window.__pip.S.adjust.saturation, document.getElementById('sl-saturation').value]);
+    await setSlider('hue', 40);
+    await page.waitForFunction(() => window.__log.filter((l) => l.op === 'delete').length === 1, null, { timeout: 10000 });
+    await setSlider('saturation', -50);
+    await page.waitForFunction(() => window.__log.filter((l) => l.op === 'delete').length === 2, null, { timeout: 10000 });
+    await page.waitForTimeout(400);
+    // Ctrl+Z i PowerPoint: versjon 1 (figur 101) kommer tilbake
+    await page.evaluate(() => window.__pptSwap('102', '101'));
+    await page.waitForTimeout(600);
+    let a = await adj();
+    check(a[0] === 40 && a[1] === 0 && a[2] === '0', 'Ctrl+Z i PowerPoint: panelet viser forrige versjon ' + a);
+    // Ctrl+Z igjen: originalen
+    await page.evaluate(() => window.__pptSwap('101', '3'));
+    await page.waitForTimeout(600);
+    a = await adj();
+    check(a[0] === 0 && a[1] === 0, 'Ctrl+Z helt tilbake: panelet viser originalen ' + a);
+    // Ctrl+Y i PowerPoint: versjon 1 igjen
+    await page.evaluate(() => window.__pptSwap('3', '101'));
+    await page.waitForTimeout(600);
+    a = await adj();
+    check(a[0] === 40 && a[1] === 0, 'Ctrl+Y i PowerPoint: panelet følger med ' + a);
+    check(await page.evaluate(() => window.__log.filter((l) => l.op === 'insert').length === 2), 'ingen ekstra innsetting når panelet bare følger lysbildet');
+    // Ny justering bygger videre paa versjonen som ligger paa lysbildet
+    await setSlider('vibrance', 30);
+    await page.waitForFunction(() => window.__log.filter((l) => l.op === 'delete').length === 3, null, { timeout: 10000 });
+    check(await page.evaluate(() => window.__log.filter((l) => l.op === 'delete')[2].id === '101'), 'ny justering erstatter bildet som faktisk ligger på lysbildet');
+    a = await page.evaluate(() => [window.__pip.S.adjust.hue, window.__pip.S.adjust.vibrance]);
+    check(a[0] === 40 && a[1] === 30, 'og beholder innstillingene fra den versjonen ' + a);
     check(errors.length === 0, 'ingen JS-feil ' + errors.join(' | '));
     await page.close();
   }

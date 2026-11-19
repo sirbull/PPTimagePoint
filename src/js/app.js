@@ -110,7 +110,8 @@
     S.src = { full: full, proxy: proxy, name: opt.name || 'image', mime: blob.type || 'image/png', meta: opt.meta || null, capped: Math.max(sw, sh) > FULL_MAX,
       // Originalen slik den var da den ble hentet, for "Reset"
       origBlob: blob, origLossless: !c.l && !c.t && !c.r && !c.b && Math.max(sw, sh) <= FULL_MAX,
-      origMeta: opt.meta ? Object.assign({}, opt.meta) : null, slideChanged: false };
+      origMeta: opt.meta ? Object.assign({}, opt.meta) : null, slideChanged: false,
+      origCrop: c, sessionId: newSessionId() };
     S.strokes = [];
     S.key.colors = []; S.key.seeds = []; S.key.enabled = false;
     S.adjust = Object.assign({}, Ops.DEFAULT_ADJUST);
@@ -125,6 +126,9 @@
     cache = {};
     live_.applied = editKey(); live_.lastKey = live_.applied;
     resetHistory();
+    // Versjon 0 er bildet slik det var da det ble hentet
+    S.src.versionCounter = 0; S.src.currentVersion = 0;
+    S.src.versions = { 0: versionRecord(snapshotKey()) };
     setLiveState('');
 
     var view = $('view');
@@ -145,13 +149,134 @@
     await busy(true, 'Getting the image from PowerPoint ...');
     try {
       var pic = await Bridge.getSelectedImage();
-      await loadBlob(new Blob([pic.bytes], { type: pic.mime }), pic);
+      var tag = parseTag(pic.meta && pic.meta.sessionId);
+      var rec = tag ? await Store.get(tag.sid) : null;
+      if (rec && rec.versions) await restoreSession(rec, pic, tag.v);
+      else await loadBlob(new Blob([pic.bytes], { type: pic.mime }), pic);
     } catch (e) {
       status(e.message || String(e), 'err');
     } finally {
       loading = false;
       busy(false);
     }
+  }
+
+  /* ---------------- Huske redigeringer (oekter) ---------------- */
+
+  // Originalen, innstillingene og angrehistorikken lagres lokalt (IndexedDB),
+  // knyttet til et usynlig merke paa bildet i presentasjonen. Da kan panelet
+  // fortsette der det slapp selv om det har vaert lukket eller lastet paa nytt.
+  var Store = (function () {
+    var mem = {};
+    var dbp = null;
+    function db() {
+      if (dbp) return dbp;
+      dbp = new Promise(function (resolve) {
+        try {
+          var req = indexedDB.open('pptimagepoint', 1);
+          req.onupgradeneeded = function () { req.result.createObjectStore('sessions', { keyPath: 'id' }); };
+          req.onsuccess = function () { resolve(req.result); };
+          req.onerror = function () { resolve(null); };
+        } catch (e) { resolve(null); }
+      });
+      return dbp;
+    }
+    function tx(mode, fn) {
+      return db().then(function (d) {
+        if (!d) return null;
+        return new Promise(function (resolve) {
+          try {
+            var t = d.transaction('sessions', mode);
+            var r = fn(t.objectStore('sessions'));
+            t.oncomplete = function () { resolve(r && r.result); };
+            t.onerror = t.onabort = function () { resolve(null); };
+          } catch (e) { resolve(null); }
+        });
+      });
+    }
+    return {
+      get: async function (id) {
+        if (mem[id]) return mem[id];
+        return (await tx('readonly', function (st) { return st.get(id); })) || null;
+      },
+      put: async function (rec) {
+        mem[rec.id] = rec;
+        await tx('readwrite', function (st) { return st.put(rec); });
+        // behold bare de 30 nyeste
+        var all = await tx('readonly', function (st) { return st.getAll(); });
+        if (all && all.length > 30) {
+          all.sort(function (a, b) { return a.savedAt - b.savedAt; });
+          var old = all.slice(0, all.length - 30);
+          await tx('readwrite', function (st) { old.forEach(function (o) { st.delete(o.id); }); });
+        }
+      }
+    };
+  })();
+
+  function newSessionId() {
+    return 'pip-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+
+  function saveSession(stateStr) {
+    var src = S.src, m = src.meta;
+    var rec = {
+      id: src.sessionId, savedAt: Date.now(), name: src.name, mime: src.mime,
+      origBlob: src.origBlob, origCrop: src.origCrop, origMeta: src.origMeta, origLossless: src.origLossless,
+      versions: src.versions, versionCounter: src.versionCounter, currentVersion: src.currentVersion,
+      hist: { past: hist.past.slice(-100), future: hist.future.slice() }
+    };
+    Store.put(rec).catch(function () { /* ikke kritisk */ });
+  }
+
+  async function restoreSession(rec, pic, version) {
+    var v = rec.versions && rec.versions[version] ? version : rec.currentVersion;
+    var vr = rec.versions[v];
+    await loadBlob(rec.origBlob, { crop: rec.origCrop, name: rec.name, meta: Object.assign({}, pic.meta) });
+    S.src.sessionId = rec.id;
+    S.src.origMeta = rec.origMeta;
+    S.src.origLossless = rec.origLossless;
+    S.src.slideChanged = v !== 0;
+    S.src.versions = rec.versions;
+    S.src.versionCounter = rec.versionCounter;
+    hist.past = (rec.hist && rec.hist.past) || [];
+    hist.future = (rec.hist && rec.hist.future) || [];
+    useVersion(v, vr, pic.meta.shapeId);
+    hist.committed = hist.lastKey = vr.state;
+    updateHistoryButtons();
+    status('Your earlier edits are restored. Keep adjusting, undo, or press Reset.', 'ok');
+  }
+
+  /** Det som skal til for aa fortsette fra en bestemt versjon paa lysbildet. */
+  function versionRecord(stateStr) {
+    var m = S.src.meta;
+    return {
+      state: stateStr, crop: S.crop,
+      syncRect: S.slideSync ? S.slideSync.rect : null, syncGeom: S.slideSync ? S.slideSync.geom : null,
+      frame: m ? { left: m.left, top: m.top, width: m.width, height: m.height } : null
+    };
+  }
+
+  function trimVersions() {
+    var keys = Object.keys(S.src.versions).map(Number).filter(function (k) { return k > 0; }).sort(function (a, b) { return a - b; });
+    while (keys.length > 60) delete S.src.versions[keys.shift()];
+  }
+
+  /** Setter panelet til innstillingene for en versjon som ligger paa lysbildet (uten aa endre lysbildet). */
+  function useVersion(v, vr, shapeId) {
+    applySnapshot(vr.state);
+    S.crop = vr.crop || S.crop;
+    S.slideSync = vr.syncRect && vr.syncGeom ? { rect: vr.syncRect, geom: vr.syncGeom } : null;
+    if (S.src.meta && vr.frame) Object.assign(S.src.meta, vr.frame);
+    if (S.src.meta && shapeId) S.src.meta.shapeId = shapeId;
+    S.src.currentVersion = v;
+    live_.applied = editKey(); live_.lastKey = live_.applied;
+    render();
+  }
+
+  function parseTag(tag) {
+    if (!tag) return null;
+    var i = tag.lastIndexOf('|');
+    return i < 0 ? { sid: tag, v: null } : { sid: tag.slice(0, i), v: parseInt(tag.slice(i + 1), 10) };
   }
 
   /* ---------------- Automatisk henting ved markering ---------------- */
@@ -166,6 +291,25 @@
     try { info = await Bridge.getSelectedImageId(); } catch (e) { return; }
     if (loading || live_.running || Date.now() < suppressUntil) { retryLater(); return; }
     if (!info) return;
+    var tag = parseTag(info.sessionId);
+    if (S.src && S.src.meta && tag && tag.sid === S.src.sessionId) {
+      // Samme bilde. Har PowerPoint angret eller gjort om, ligger en annen versjon paa lysbildet.
+      var vr = S.src.versions[tag.v];
+      if (tag.v !== S.src.currentVersion && vr) {
+        useVersion(tag.v, vr, info.id);
+        status('Matched the picture on the slide (undo or redo in PowerPoint).', 'ok');
+      } else {
+        S.src.meta.shapeId = info.id;
+      }
+      return;
+    }
+    if (S.src && S.src.meta && !tag && S.src.origMeta && info.id === S.src.origMeta.shapeId && S.src.currentVersion !== 0) {
+      // PowerPoint har angret helt tilbake til originalbildet
+      useVersion(0, S.src.versions[0], info.id);
+      S.src.slideChanged = false;
+      status('Matched the original picture on the slide (undo in PowerPoint).', 'ok');
+      return;
+    }
     if (S.src && S.src.meta && S.src.meta.shapeId === info.id) return;
     await getFromPowerPoint();
   }
@@ -356,6 +500,7 @@
     if (!S.src) return;
     if (!live) status('');
     var key = editKey();
+    var snap = snapshotKey();
     suppressUntil = Infinity;
     if (!live) await busy(true, 'Processing at full resolution ...');
     else setLiveState('Updating slide ...');
@@ -384,7 +529,8 @@
       if (!live) await busy(true, 'Inserting into the slide ...');
       var b64 = await blobToBase64(enc.blob);
       var replace = (live || $('replace').checked) && S.src.meta;
-      var r = await Bridge.insertImage(b64, placementFor(res.rect), replace ? S.src.meta : null);
+      var version = ++S.src.versionCounter;
+      var r = await Bridge.insertImage(b64, placementFor(res.rect), replace ? S.src.meta : null, S.src.sessionId + '|' + version);
       S.src.slideChanged = !opts.original;
       S.slideSync = r && r.meta ? {
         rect: res.rect,
@@ -402,6 +548,13 @@
         S.src.meta = null;
       }
       live_.applied = key;
+      if (r && r.meta && S.src.meta) {
+        // Husk hvilke innstillinger denne versjonen paa lysbildet har (for Ctrl+Z i PowerPoint)
+        S.src.currentVersion = version;
+        S.src.versions[version] = versionRecord(snap);
+        trimVersions();
+        saveSession();
+      }
       if (live) {
         setLiveState('Slide updated');
         if (replace && r && !r.deleted) status('The previous version could not be removed automatically. Delete it manually.', 'err');
@@ -469,6 +622,12 @@
     hist.committed = k; hist.lastKey = k;
     hist.future = [];
     updateHistoryButtons();
+  }
+
+  function commitNow() {
+    if (!S.src || live_.drawing) return;
+    var k = snapshotKey();
+    if (k !== hist.committed) commitHistory(k);
   }
 
   function historyTick() {
@@ -554,6 +713,11 @@
       else if (key === 'y' || (key === 'z' && e.shiftKey)) { e.preventDefault(); redo(); }
     });
     setInterval(function () { historyTick(); updateHistoryButtons(); }, 200);
+    // Klikk, valg og slipp av glidebryter blir egne steg med en gang (ikke avhengig av tid)
+    var commitSoon = function () { setTimeout(commitNow, 0); };
+    document.addEventListener('change', commitSoon, true);
+    document.addEventListener('click', commitSoon, true);
+    $('view').addEventListener('pointerup', commitSoon);
   }
 
   /* ---------------- Live-oppdatering av lysbildet ---------------- */
@@ -922,9 +1086,12 @@
     $('live').addEventListener('change', function (e) { live_.on = e.target.checked; syncLiveUI(); if (!live_.on) setLiveState(''); });
     syncLiveUI();
     setInterval(liveTick, 250);
+    // Naar du kommer tilbake til panelet (f.eks. etter Ctrl+Z i lysbildet), sjekk hva som ligger der
+    window.addEventListener('focus', onSelectionChanged);
+    document.documentElement.addEventListener('mouseenter', onSelectionChanged);
     autoLoad();
   }
 
-  window.__pip = { undo: undo, redo: redo, S: S, renderFull: renderFull, loadBlob: loadBlob, renderNow: renderNow, cache: function () { return cache; }, pickAt: pickAt, syncUI: syncUI };
+  window.__pip = { hist: function () { return hist; }, undo: undo, redo: redo, S: S, renderFull: renderFull, loadBlob: loadBlob, renderNow: renderNow, cache: function () { return cache; }, pickAt: pickAt, syncUI: syncUI };
   start();
 })();
