@@ -1,0 +1,29 @@
+PPTimagePoint
+=============
+
+Tillegget kjører fra https://sirbull.github.io/PPTimagePoint/ og trenger
+internett. Filene her forteller bare PowerPoint hvor det ligger.
+
+MAC
+  Dobbeltklikk install-mac.command.
+  Hvis Mac sier at filen ikke kan åpnes: høyreklikk på filen, velg Åpne,
+  og bekreft med Åpne.
+  Start PowerPoint på nytt, og gå til Hjem > Tillegg > Mine tillegg.
+
+WINDOWS
+  Pakk ut hele zip-filen først (høyreklikk > Pakk ut alle).
+  Dobbeltklikk install-windows.bat.
+  Hvis Windows viser «Windows beskyttet PCen»: klikk Mer info > Kjør likevel.
+  Start PowerPoint på nytt, og gå til Hjem > Tillegg > Mine tillegg.
+  (Tillegget kan ligge under en egen overskrift for utviklertillegg.)
+
+POWERPOINT PÅ NETT
+  Hjem > Tillegg > Flere tillegg > Mine tillegg > Last opp mitt tillegg,
+  og velg manifest.xml.
+
+BRUK
+  Marker et bilde, klikk Picture Tools på Hjem-fanen, og deretter
+  Get selected picture.
+
+AVINSTALLERE
+  Kjør uninstall-mac.command eller uninstall-windows.bat.

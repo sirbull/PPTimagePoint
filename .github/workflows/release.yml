@@ -1,0 +1,28 @@
+name: Lag release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bygg nedlastingspakke
+        run: |
+          mkdir -p dist/PPTimagePoint
+          cp manifest.xml install/LES-MEG.txt install/*.bat install/*.command dist/PPTimagePoint/
+          chmod +x dist/PPTimagePoint/*.command
+          cd dist && zip -r "PPTimagePoint-${GITHUB_REF_NAME}.zip" PPTimagePoint
+      - name: Opprett release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/PPTimagePoint-${GITHUB_REF_NAME}.zip" manifest.xml \
+            --title "PPTimagePoint $GITHUB_REF_NAME" \
+            --notes-file install/RELEASE_NOTES.md
