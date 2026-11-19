@@ -24,6 +24,7 @@ Alt skjer lokalt i PowerPoint. Ingen bilder sendes til noen server.
    * **Despill** fjerner f.eks. grønt skjær fra greenscreen.
    * **Erase / Restore** er pensler for å rette opp det fargenøkkelen ikke klarer alene.
    * Hold inne **Before** for å sammenligne med originalen.
+   * **Ctrl+Z** angrer og **Ctrl+Y** gjør om (eller knappene **Undo** og **Redo**). Snarveiene virker når panelet har fokus. Står markøren i lysbildet, går Ctrl+Z til PowerPoint i stedet.
 5. Med **Live update on slide** (på som standard) oppdateres bildet på lysbildet automatisk et øyeblikk etter at du slipper en glidebryter eller penselen. Slår du det av, bruker du **Insert into slide** når du er ferdig.
 
 ### Om live-oppdatering

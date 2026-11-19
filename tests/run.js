@@ -97,6 +97,25 @@ async function decodeB64Png(page, b64) {
     await page.setInputFiles('#fileInput', path.join(__dirname, 'fixtures/green.jpg'));
     await page.waitForSelector('#stage:not([hidden])');
     await page.click('#btnAuto');
+    await page.waitForTimeout(700);
+    // Angre og gjoer om med tastaturet
+    await page.evaluate(() => { const i = document.getElementById('sl-saturation'); i.value = 50; i.dispatchEvent(new Event('input')); });
+    await page.waitForTimeout(700);
+    await page.keyboard.press('Control+z');
+    const u1 = await page.evaluate(() => [window.__pip.S.adjust.saturation, window.__pip.S.key.enabled, document.getElementById('sl-saturation').value]);
+    check(u1[0] === 0 && u1[1] === true && u1[2] === '0', 'Ctrl+Z angrer metning, glidebryteren følger med ' + u1);
+    await page.keyboard.press('Control+z');
+    check(await page.evaluate(() => window.__pip.S.key.enabled === false), 'Ctrl+Z en gang til angrer bakgrunnsfjerningen');
+    await page.keyboard.press('Control+y');
+    await page.keyboard.press('Control+y');
+    const u2 = await page.evaluate(() => [window.__pip.S.adjust.saturation, window.__pip.S.key.enabled]);
+    check(u2[0] === 50 && u2[1] === true, 'Ctrl+Y gjør om begge stegene ' + u2);
+    // endring rett foer angring (foer den er lagret) skal ogsaa angres
+    await page.evaluate(() => { const i = document.getElementById('sl-contrast'); i.value = 30; i.dispatchEvent(new Event('input')); });
+    await page.keyboard.press('Control+z');
+    check(await page.evaluate(() => window.__pip.S.adjust.contrast === 0 && window.__pip.S.adjust.saturation === 50), 'Ctrl+Z rett etter en endring angrer akkurat den');
+    await page.click('#btnUndo');
+    check(await page.evaluate(() => window.__pip.S.adjust.saturation === 0), 'Undo-knappen virker');
     await page.waitForTimeout(300);
     const r = await page.evaluate(() => {
       const res = window.__pip.renderFull();
@@ -228,6 +247,12 @@ async function decodeB64Png(page, b64) {
     await page.evaluate(() => { const i = document.getElementById('sl-hue'); i.value = 40; i.dispatchEvent(new Event('input')); });
     await page.waitForFunction(() => window.__log.filter((l) => l.op === 'delete').length === 2, null, { timeout: 10000 });
     check(await page.evaluate(() => window.__log.filter((l) => l.op === 'delete')[1].id === '101'), 'andre live-oppdatering erstatter forrige versjon');
+    // Ctrl+Z i panelet angrer fargetonen, og live oppdaterer lysbildet igjen
+    await page.click('#info');
+    await page.keyboard.press('Control+z');
+    check(await page.evaluate(() => window.__pip.S.adjust.hue === 0 && window.__pip.S.adjust.saturation === 50), 'Ctrl+Z angrer siste justering i live-modus');
+    await page.waitForFunction(() => window.__log.filter((l) => l.op === 'delete').length === 3, null, { timeout: 10000 });
+    check(true, 'lysbildet oppdateres etter angring');
     // marker et annet bilde: det lastes inn
     await page.evaluate(() => window.__select('2'));
     await page.waitForFunction(() => window.__pip.S.src.meta.shapeId === '2', null, { timeout: 10000 });

@@ -75,7 +75,7 @@ button:disabled { opacity: .5; cursor: default; }
 
 .toolbar { display: flex; gap: 6px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
 .seg { display: flex; flex: 1 1 100%; min-width: 0; }
-#btnCompare { flex: 1; }
+#btnCompare, #btnUndo, #btnRedo { flex: 1; padding: 5px 6px; }
 #bgSelect { flex: 1; }
 .seg button { border-radius: 0; flex: 1; padding: 5px 6px; white-space: nowrap; }
 .seg button + button { border-left: 0; }

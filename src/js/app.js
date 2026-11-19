@@ -115,6 +115,7 @@
     S.out = { w: full.width, h: full.height, lock: true };
     cache = {};
     live_.applied = editKey(); live_.lastKey = live_.applied;
+    resetHistory();
     setLiveState('');
 
     var view = $('view');
@@ -334,6 +335,88 @@
   }
 
   function doInsert() { return applyToSlide(false); }
+
+  /* ---------------- Angre / gjoer om ---------------- */
+
+  // Historikken lagrer hele redigeringstilstanden som JSON. En endring
+  // lagres som eget steg naar den har staatt i ro litt (slik at et helt
+  // drag med en glidebryter blir ett steg).
+  var hist = { past: [], future: [], committed: null, lastKey: null, changedAt: 0 };
+
+  function snapshotKey() {
+    return JSON.stringify({ adjust: S.adjust, key: S.key, strokes: S.strokes, trim: S.trim, out: S.out, format: S.format });
+  }
+
+  function resetHistory() {
+    hist.past = []; hist.future = [];
+    hist.committed = hist.lastKey = snapshotKey();
+    updateHistoryButtons();
+  }
+
+  function commitHistory(k) {
+    hist.past.push(hist.committed);
+    if (hist.past.length > 100) hist.past.shift();
+    hist.committed = k; hist.lastKey = k;
+    hist.future = [];
+    updateHistoryButtons();
+  }
+
+  function historyTick() {
+    if (!S.src) return;
+    var k = snapshotKey();
+    if (k !== hist.lastKey) { hist.lastKey = k; hist.changedAt = Date.now(); return; }
+    if (k === hist.committed || live_.drawing) return;
+    if (Date.now() - hist.changedAt < 400) return;
+    commitHistory(k);
+  }
+
+  function applySnapshot(str) {
+    var o = JSON.parse(str);
+    S.adjust = o.adjust; S.key = o.key; S.strokes = o.strokes;
+    S.trim = o.trim; S.out = o.out; S.format = o.format;
+    hist.lastKey = str;
+    syncUI(); render();
+    updateHistoryButtons();
+  }
+
+  function undo() {
+    if (!S.src || live_.drawing) return;
+    var k = snapshotKey();
+    if (k !== hist.committed) commitHistory(k);
+    if (!hist.past.length) return;
+    hist.future.push(hist.committed);
+    hist.committed = hist.past.pop();
+    applySnapshot(hist.committed);
+  }
+
+  function redo() {
+    if (!S.src || live_.drawing || !hist.future.length) return;
+    if (snapshotKey() !== hist.committed) return; // ny endring siden angring: ingenting aa gjoere om
+    hist.past.push(hist.committed);
+    hist.committed = hist.future.pop();
+    applySnapshot(hist.committed);
+  }
+
+  function updateHistoryButtons() {
+    var dirty = S.src && snapshotKey() !== hist.committed;
+    $('btnUndo').disabled = !S.src || (!hist.past.length && !dirty);
+    $('btnRedo').disabled = !S.src || !hist.future.length;
+  }
+
+  function bindHistory() {
+    $('btnUndo').addEventListener('click', undo);
+    $('btnRedo').addEventListener('click', redo);
+    document.addEventListener('keydown', function (e) {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      var t = e.target;
+      // la tallfelt beholde sin egen angring av tekst
+      if (t && t.tagName === 'INPUT' && t.type === 'number') return;
+      var key = (e.key || '').toLowerCase();
+      if (key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      else if (key === 'y' || (key === 'z' && e.shiftKey)) { e.preventDefault(); redo(); }
+    });
+    setInterval(function () { historyTick(); updateHistoryButtons(); }, 200);
+  }
 
   /* ---------------- Live-oppdatering av lysbildet ---------------- */
 
@@ -667,6 +750,7 @@
     buildSliders();
     bindControls();
     bindStage();
+    bindHistory();
     var inPPT = await Bridge.init();
     if (!inPPT) {
       $('btnGet').hidden = true;
@@ -690,6 +774,6 @@
     autoLoad();
   }
 
-  window.__pip = { S: S, renderFull: renderFull, loadBlob: loadBlob, renderNow: renderNow, cache: function () { return cache; }, pickAt: pickAt, syncUI: syncUI };
+  window.__pip = { undo: undo, redo: redo, S: S, renderFull: renderFull, loadBlob: loadBlob, renderNow: renderNow, cache: function () { return cache; }, pickAt: pickAt, syncUI: syncUI };
   start();
 })();
