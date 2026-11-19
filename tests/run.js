@@ -631,13 +631,21 @@ async function decodeB64Png(page, b64) {
     const red0 = await px(800, 300), green0 = await px(100, 100), blue0 = await px(1300, 500);
     await page.click('#secMixer summary');
     await page.locator('#mixSwatches .swatch').nth(0).click();
-    await page.evaluate(() => { const i = document.getElementById('sl-mixH'); i.value = 100; i.dispatchEvent(new Event('input')); });
+    await page.evaluate(() => { const i = document.getElementById('sl-mixH'); i.value = 30; i.dispatchEvent(new Event('input')); });
     const red1 = await px(800, 300), green1 = await px(100, 100), blue1 = await px(1300, 500);
     check(red1[1] > red0[1] + 40 && red1[0] > 150, 'rødt blir mer oransje ' + red0 + ' -> ' + red1);
     check(JSON.stringify(green1) === JSON.stringify(green0) && JSON.stringify(blue1) === JSON.stringify(blue0), 'grønt og blått er uendret');
     check(await page.evaluate(() => document.querySelector('#mixSwatches .swatch').classList.contains('changed')), 'fargen merkes som endret');
     await page.locator('#mixSwatches .swatch').nth(5).click();
     check(await page.evaluate(() => document.getElementById('sl-mixH').value === '0' && /Blue/.test(document.querySelector('label[for="sl-mixH"]').textContent)), 'bytte farge viser den fargens verdier');
+    // blått helt over til rødt (hele fargehjulet)
+    await page.evaluate(() => { const i = document.getElementById('sl-mixH'); i.value = 130; i.dispatchEvent(new Event('input')); });
+    const blueRed = await px(1300, 500);
+    check(blueRed[0] > blueRed[2] + 80 && blueRed[0] > blueRed[1] + 80, 'blått kan gjøres om til rødt ' + blue0 + ' -> ' + blueRed);
+    await page.evaluate(() => { const i = document.getElementById('sl-mixH'); i.value = -120; i.dispatchEvent(new Event('input')); });
+    const blueGreen = await px(1300, 500);
+    check(blueGreen[1] > blueGreen[0] + 60 && blueGreen[1] > blueGreen[2], 'og til grønt den andre veien ' + blueGreen);
+    await page.evaluate(() => { const i = document.getElementById('sl-mixH'); i.value = 0; i.dispatchEvent(new Event('input')); });
     await page.evaluate(() => { const i = document.getElementById('sl-mixS'); i.value = -100; i.dispatchEvent(new Event('input')); });
     const blue2 = await px(1300, 500);
     check(Math.max(...blue2) - Math.min(...blue2) < 25 && Math.max(...blue0) - Math.min(...blue0) > 120, 'blått uten metning blir nesten grått ' + blue0 + ' -> ' + blue2);

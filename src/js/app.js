@@ -869,7 +869,9 @@
     setSlider('mixH', m[mixSel * 3]); setSlider('mixS', m[mixSel * 3 + 1]); setSlider('mixL', m[mixSel * 3 + 2]);
     // fargede spor for valgt farge
     var hEl = $('sl-mixH').parentElement, sEl = $('sl-mixS').parentElement, lEl = $('sl-mixL').parentElement;
-    hEl.style.setProperty('--track-bg', 'linear-gradient(90deg,' + hsl(c - 30, 85, 52) + ',' + hsl(c, 85, 52) + ',' + hsl(c + 30, 85, 52) + ')');
+    var wheel = [];
+    for (var a = -180; a <= 180; a += 30) wheel.push(hsl(c + a, 85, 52));
+    hEl.style.setProperty('--track-bg', 'linear-gradient(90deg,' + wheel.join(',') + ')');
     sEl.style.setProperty('--track-bg', 'linear-gradient(90deg,' + hsl(c, 0, 55) + ',' + hsl(c, 95, 50) + ')');
     lEl.style.setProperty('--track-bg', 'linear-gradient(90deg,' + hsl(c, 80, 15) + ',' + hsl(c, 85, 50) + ',' + hsl(c, 90, 88) + ')');
     $('sl-mixH').previousElementSibling.firstElementChild.textContent = Ops.MIX_COLORS[mixSel].name + ' hue';

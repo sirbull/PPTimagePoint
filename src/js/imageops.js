@@ -451,7 +451,7 @@
       var t = (d - h0) / (h1 - h0);
       t = t * t * (3 - 2 * t);
       var wi = 1 - t, wj = t;
-      dh[deg] = (mix[i * 3] * wi + mix[j * 3] * wj) * 0.3;          // +-30 grader
+      dh[deg] = mix[i * 3] * wi + mix[j * 3] * wj;                  // grader, +-180
       ds[deg] = (mix[i * 3 + 1] * wi + mix[j * 3 + 1] * wj) / 100;  // -1..1
       dl[deg] = (mix[i * 3 + 2] * wi + mix[j * 3 + 2] * wj) / 100;  // -1..1
     }
